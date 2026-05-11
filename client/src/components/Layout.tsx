@@ -24,6 +24,9 @@ export function Layout({ children }: { children: ReactNode }) {
             <button className={isActive('/')} onClick={() => navigate('/')}>
               Buffers
             </button>
+            <a href="/docs" className="nav-link">
+              Documentação
+            </a>
             <button className="nav-link" onClick={handleLogout}>
               Sair
             </button>

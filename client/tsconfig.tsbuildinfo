@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/api/client.ts","./src/components/layout.tsx","./src/components/protectedroute.tsx","./src/pages/bufferdetail.tsx","./src/pages/bufferform.tsx","./src/pages/bufferlist.tsx","./src/pages/login.tsx"],"version":"5.9.3"}

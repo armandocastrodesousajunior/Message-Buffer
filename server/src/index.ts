@@ -64,8 +64,11 @@ async function main(): Promise<void> {
   // API administrativa (protegida por Bearer token)
   app.use('/api/web', authMiddleware, createWebRoutes(bufferService, logRepo));
 
-  // Documentação Swagger
-  app.use('/api-docs', createDocsRoutes());
+  // Documentação da API
+  app.use('/docs', createDocsRoutes());
+
+  // Arquivos públicos (fotos, etc)
+  app.use('/public', express.static(path.resolve(__dirname, '../public')));
 
   // Servir frontend React em produção
   const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -78,7 +81,7 @@ async function main(): Promise<void> {
 
   app.listen(env.port, () => {
     console.log(`Message Buffer Manager rodando em http://localhost:${env.port}`);
-    console.log(`Documentação Swagger: http://localhost:${env.port}/api-docs`);
+    console.log(`Documentação: http://localhost:${env.port}/docs`);
   });
 
   process.on('SIGTERM', () => {
