@@ -1,6 +1,6 @@
 const BASE_URL = 'http://localhost:3000';
-const BUFFER_ID = 'a872fa6b-c439-4cae-b5b1-4724da37d086';  // preencher
-const API_KEY = '13ae07d8-b477-468b-a426-e23eef393f1c';    // preencher
+const BUFFER_ID = '287bed63-9789-486d-b5f9-36abd738ac04';  // preencher
+const API_KEY = 'f5791847-e924-4884-927a-06ba4c4da79c';    // preencher
 
 const types = ['string', 'number', 'boolean', 'json'];
 

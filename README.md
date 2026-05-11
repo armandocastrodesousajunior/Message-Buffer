@@ -440,6 +440,74 @@ Acesse:
 
 ---
 
+## 🐳 Docker
+
+### Pré-requisitos
+
+- Docker
+- Docker Compose
+
+### Executando com Docker Compose
+
+```bash
+# 1. Clone o repositório
+git clone https://github.com/armandocastrodesousajunior/Message-Buffer.git
+cd Message-Buffer
+
+# 2. Inicie o container
+docker compose up -d
+
+# 3. Acompanhe os logs
+docker compose logs -f
+```
+
+Acesse:
+- **Frontend + API:** http://localhost:3000
+- **Documentação:** http://localhost:3000/docs
+
+### Parando o container
+
+```bash
+docker compose down
+```
+
+Para remover também o volume com os dados do banco:
+
+```bash
+docker compose down -v
+```
+
+### Build manual da imagem
+
+```bash
+docker build -t message-buffer .
+docker run -d \
+  --name message-buffer \
+  -p 3000:3000 \
+  -e ACCESS_TOKEN=meu-token-aqui \
+  -e DATABASE_URL=postgres://message_buffer:message_buffer@host.docker.internal:5432/message_buffer \
+  message-buffer
+```
+
+### Estrutura dos arquivos Docker
+
+| Arquivo | Finalidade |
+|---------|------------|
+| `Dockerfile` | Imagem baseada em `node:20-alpine`, instala dependências (incluindo `pg`), builda o client e inicia o servidor com `tsx` |
+| `docker-compose.yml` | Orquestra o app + PostgreSQL 16, com health check, volume persistente e restart automático |
+| `.dockerignore` | Exclui `node_modules/`, `.env`, `data/` e arquivos desnecessários do build |
+
+### Serviços do docker-compose
+
+| Serviço | Imagem | Finalidade |
+|---------|--------|------------|
+| `message-buffer` | Build local | Aplicação Node.js (Express + React) |
+| `db` | `postgres:16-alpine` | Banco de dados PostgreSQL |
+
+> **Persistência:** O PostgreSQL armazena os dados em um volume Docker (`message-buffer-pgdata`). Enquanto o volume existir, os dados sobrevivem a reinicializações do container.
+
+---
+
 ## 🧪 Testes
 
 Para testar o envio de mensagens para um buffer, utilize o script em `tests/send-messages.js`:

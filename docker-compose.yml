@@ -1,0 +1,33 @@
+services:
+  message-buffer:
+    image: armandocastro/message-buffer:v1.0.0
+    container_name: message-buffer
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - ACCESS_TOKEN=meu-token-super-seguro
+      - DATABASE_URL=postgres://message_buffer:message_buffer@db:5432/message_buffer
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: message-buffer-db
+    environment:
+      - POSTGRES_USER=message_buffer
+      - POSTGRES_PASSWORD=message_buffer
+      - POSTGRES_DB=message_buffer
+    volumes:
+      - message-buffer-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U message_buffer"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  message-buffer-pgdata:
