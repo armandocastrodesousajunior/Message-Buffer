@@ -112,8 +112,8 @@ export class WindowManagerService {
       identifier,
       buffer_id: buffer.id,
       messages: messages.map((m) => ({
-        content: parseContent(m.content, m.type),
         type: m.type,
+        content: parseContent(m.content, m.type),
         received_at: m.received_at,
       })),
     };

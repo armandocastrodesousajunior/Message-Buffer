@@ -370,18 +370,18 @@ Quando a janela expira, o buffer envia um POST para a `webhook_url` configurada 
   "buffer_id": "uuid-do-buffer",
   "messages": [
     {
-      "content": "Primeira mensagem",
       "type": "string",
+      "content": "Primeira mensagem",
       "received_at": "2025-05-10T16:00:00.000Z"
     },
     {
-      "content": 42,
       "type": "number",
+      "content": 42,
       "received_at": "2025-05-10T16:00:05.000Z"
     },
     {
-      "content": { "evento": "clique" },
       "type": "json",
+      "content": { "evento": "clique" },
       "received_at": "2025-05-10T16:00:10.000Z"
     }
   ]
