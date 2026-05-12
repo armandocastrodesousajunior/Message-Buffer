@@ -160,7 +160,7 @@ A fila de espera garante que **nenhuma mensagem seja perdida** quando o limite d
 2. 3 janelas já estao abertas para 3 identifiers diferentes
 3. Uma 4ª mensagem com um novo identifier chega → ela vai para a **fila de espera**
 4. A resposta tem `queued: true` e `window_id: ""`
-5. Assim que uma das 3 janelas for fechada, o sistema pega a mensagem da fila e cria uma nova janela
+5. Assim que uma das 3 janelas for fechada, o sistema pega **TODAS as mensagens da fila com aquele identificador** e cria uma única janela com todas elas
 
 ### Comportamento em reinicializaçao
 

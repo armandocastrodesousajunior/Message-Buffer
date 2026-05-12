@@ -1,6 +1,6 @@
 services:
   message-buffer:
-    image: armandocastro/message-buffer:v1.0.0
+    image: armandocastro/message-buffer:latest
     container_name: message-buffer
     ports:
       - "3000:3000"

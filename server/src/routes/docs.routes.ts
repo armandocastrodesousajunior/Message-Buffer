@@ -370,7 +370,7 @@ export function createDocsRoutes(): Router {
                 </div>
               </div>
               <div style="display:flex;flex-direction:column;gap:6px">
-                <div class="diagram-box small green">Cria nova janela<br>com mensagens da fila</div>
+                <div class="diagram-box small green">Desenfileira TODAS as<br>msgs do identifier<br>+ cria única janela</div>
                 <div class="diagram-box small" style="border-color:var(--gray-300);color:var(--gray-500)">Fim</div>
               </div>
             </div>
@@ -389,7 +389,7 @@ export function createDocsRoutes(): Router {
             <li>3 janelas já estão abertas para 3 identifiers diferentes</li>
             <li>Uma 4ª mensagem com um novo identifier chega → ela vai para a <strong>fila de espera</strong></li>
             <li>A resposta tem <code>queued: true</code> e <code>window_id: ""</code></li>
-            <li>Assim que uma das 3 janelas for fechada, o sistema pega a mensagem da fila e cria uma nova janela</li>
+            <li>Assim que uma das 3 janelas for fechada, o sistema pega <strong>TODAS as mensagens da fila com aquele identificador</strong> e cria uma única janela com todas elas</li>
           </ol>
 
           <h4>Quando o servidor reinicia?</h4>
