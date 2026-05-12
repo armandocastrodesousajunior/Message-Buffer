@@ -609,12 +609,21 @@ console.log(response.data);</pre>
               <tr><td><code>accepted</code></td><td><code>boolean</code></td><td>Sempre <code>true</code> quando a mensagem é válida</td></tr>
               <tr><td><code>window_id</code></td><td><code>string</code></td><td>ID da janela onde a mensagem foi alocada (vazio se <code>queued: true</code>)</td></tr>
               <tr><td><code>queued</code></td><td><code>boolean</code></td><td><code>true</code> se o limite de janelas concorrentes foi atingido e a mensagem foi para a fila de espera</td></tr>
+              <tr><td><code>queue_position</code></td><td><code>number</code></td><td>Posição na fila de espera (presente apenas quando <code>queued: true</code>)</td></tr>
             </tbody>
           </table>
+          <p style="font-size:.875rem;font-weight:600;color:var(--gray-800);margin-top:16px">Mensagem alocada na janela:</p>
           <pre>{
   "accepted": true,
   "window_id": "550e8400-e29b-41d4-a716-446655440000",
   "queued": false
+}</pre>
+          <p style="font-size:.875rem;font-weight:600;color:var(--gray-800);margin-top:20px">Mensagem enfileirada (limite de janelas atingido):</p>
+          <pre>{
+  "accepted": true,
+  "window_id": "",
+  "queued": true,
+  "queue_position": 3
 }</pre>
         </div>
 

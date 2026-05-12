@@ -344,6 +344,7 @@ console.log(response.data);
 
 ### Corpo da resposta (200)
 
+**Mensagem alocada na janela:**
 ```json
 {
   "accepted": true,
@@ -352,11 +353,22 @@ console.log(response.data);
 }
 ```
 
+**Mensagem enfileirada (limite de janelas atingido):**
+```json
+{
+  "accepted": true,
+  "window_id": "",
+  "queued": true,
+  "queue_position": 3
+}
+```
+
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
 | `accepted` | `boolean` | Sempre `true` quando a mensagem é válida |
 | `window_id` | `string` | ID da janela onde a mensagem foi alocada (vazio se `queued: true`) |
 | `queued` | `boolean` | `true` se o limite de janelas concorrentes foi atingido e a mensagem foi para a fila de espera |
+| `queue_position` | `number` | Posição na fila de espera (presente apenas quando `queued: true`) |
 
 ---
 

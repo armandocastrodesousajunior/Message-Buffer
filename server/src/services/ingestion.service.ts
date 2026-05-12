@@ -9,6 +9,7 @@ export interface IngestResult {
   accepted: true;
   window_id: string;
   queued: boolean;
+  queue_position?: number;
 }
 
 export class IngestionService {
@@ -58,6 +59,7 @@ export class IngestionService {
     }
 
     await this.waitingRepo.enqueue(bufferId, request.identifier, request.content, request.type);
-    return { accepted: true, window_id: '', queued: true };
+    const queuePosition = await this.waitingRepo.countByBuffer(bufferId);
+    return { accepted: true, window_id: '', queued: true, queue_position: queuePosition };
   }
 }
