@@ -21,6 +21,31 @@ export class WindowManagerService {
     private webhookService: WebhookService
   ) {}
 
+  async resetWindow(
+    buffer: BufferRecord,
+    windowId: string,
+    identifier: string
+  ): Promise<void> {
+    const timerKey = this.timerKey(buffer.id, identifier);
+
+    const existing = this.activeTimers.get(timerKey);
+    if (existing) {
+      clearTimeout(existing.timer);
+      this.activeTimers.delete(timerKey);
+    }
+
+    const expiresAt = new Date(Date.now() + buffer.window_time * 1000).toISOString();
+    await this.windowRepo.updateExpiresAt(windowId, expiresAt);
+
+    const timer = setTimeout(
+      () => this.expireWindow(buffer, windowId, identifier),
+      buffer.window_time * 1000
+    );
+    timer.unref();
+
+    this.activeTimers.set(timerKey, { timer, windowId });
+  }
+
   async startWindow(
     buffer: BufferRecord,
     windowId: string,

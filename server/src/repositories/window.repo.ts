@@ -39,6 +39,10 @@ export class WindowRepository {
     await getDatabase()('windows').where({ id }).update({ status });
   }
 
+  async updateExpiresAt(id: string, expiresAt: string): Promise<void> {
+    await getDatabase()('windows').where({ id }).update({ expires_at: expiresAt });
+  }
+
   async countOpenByIdentifier(bufferId: string, identifier: string): Promise<number> {
     const result = await getDatabase()('windows')
       .where({ buffer_id: bufferId, identifier })

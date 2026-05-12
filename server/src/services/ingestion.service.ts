@@ -36,6 +36,7 @@ export class IngestionService {
         request.content,
         request.type
       );
+      await this.windowManager.resetWindow(buffer, openWindow.id, request.identifier);
       return { accepted: true, window_id: openWindow.id, queued: false };
     }
 
