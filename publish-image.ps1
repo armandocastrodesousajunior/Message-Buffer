@@ -3,7 +3,7 @@ param(
 )
 
 $IMAGE = "armandocastro/message-buffer"
-$ROOT = Split-Path -Parent $PSScriptRoot
+$ROOT = $PSScriptRoot
 
 $Version = Read-Host "Qual a versão? (ex: v1.0.0)"
 if (-not $Version) {
