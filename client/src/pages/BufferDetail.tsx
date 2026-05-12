@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, BufferData, LogData } from '../api/client';
 
@@ -10,6 +10,7 @@ export function BufferDetail() {
   const [logs, setLogs] = useState<LogData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState('');
 
   useEffect(() => {
     if (id) loadData(id);
@@ -31,9 +32,12 @@ export function BufferDetail() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => alert('Copiado!'));
-  };
+  const copyToClipboard = useCallback((text: string, field: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(field);
+      setTimeout(() => setCopied(''), 1500);
+    });
+  }, []);
 
   if (loading) return <div className="loading">Carregando...</div>;
   if (error) return <div className="alert alert-error">{error}</div>;
@@ -61,7 +65,12 @@ export function BufferDetail() {
         <div className="detail-grid">
           <div className="detail-item">
             <span className="detail-label">ID</span>
-            <code>{buffer.id}</code>
+            <div className="api-key-row">
+              <code>{buffer.id}</code>
+              <button className="btn btn-xs btn-ghost" onClick={() => copyToClipboard(buffer.id, 'id')}>
+                {copied === 'id' ? 'Copiado!' : 'Copiar'}
+              </button>
+            </div>
           </div>
           <div className="detail-item">
             <span className="detail-label">Janela</span>
@@ -79,8 +88,8 @@ export function BufferDetail() {
             <span className="detail-label">API Key</span>
             <div className="api-key-row">
               <code>{buffer.api_key}</code>
-              <button className="btn btn-xs btn-ghost" onClick={() => copyToClipboard(buffer.api_key)}>
-                Copiar
+              <button className="btn btn-xs btn-ghost" onClick={() => copyToClipboard(buffer.api_key, 'apiKey')}>
+                {copied === 'apiKey' ? 'Copiado!' : 'Copiar'}
               </button>
             </div>
           </div>
@@ -97,8 +106,11 @@ export function BufferDetail() {
 
       <div className="detail-card">
         <h3>Endpoint de Ingestão</h3>
-        <div className="endpoint-box">
-          <code>POST {window.location.origin}/api/ingest/{buffer.id}</code>
+        <div className="endpoint-box" style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <code style={{flex:1}}>POST {window.location.origin}/api/ingest/{buffer.id}</code>
+          <button className="btn btn-xs" style={{background:'rgba(255,255,255,0.15)',color:'#fff',borderColor:'rgba(255,255,255,0.3)'}} onClick={() => copyToClipboard(`${window.location.origin}/api/ingest/${buffer.id}`, 'endpoint')}>
+            {copied === 'endpoint' ? 'Copiado!' : 'Copiar'}
+          </button>
         </div>
         <p className="endpoint-desc">
           Envie mensagens para este buffer usando o header <code>X-Api-Key</code> com a API Key acima.
