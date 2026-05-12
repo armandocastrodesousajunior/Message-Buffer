@@ -1,6 +1,6 @@
 const BASE_URL = 'http://localhost:3000';
-const BUFFER_ID = '287bed63-9789-486d-b5f9-36abd738ac04';  // preencher
-const API_KEY = 'f5791847-e924-4884-927a-06ba4c4da79c';    // preencher
+const BUFFER_ID = 'a872fa6b-c439-4cae-b5b1-4724da37d086';
+const API_KEY = '13ae07d8-b477-468b-a426-e23eef393f1c';
 
 const types = ['string', 'number', 'boolean', 'json'];
 
@@ -16,26 +16,39 @@ function generateContent(type, index) {
   }
 }
 
-async function sendMessage(identifier, type, index) {
-  const content = generateContent(type, index);
+async function sendMessage(identifier, type, globalIndex) {
+  const content = generateContent(type, globalIndex);
   const res = await fetch(`${BASE_URL}/api/ingest/${BUFFER_ID}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Api-Key': API_KEY },
     body: JSON.stringify({ identifier, content, type }),
   });
   const data = await res.json();
-  console.log(`[${String(index + 1).padStart(2, '0')}] id=${identifier} type=${type} => ${JSON.stringify(data)}`);
+  const qp = data.queue_position !== undefined ? ` | fila: #${data.queue_position}` : '';
+  console.log(`[${String(globalIndex + 1).padStart(2, '0')}] id=${identifier} type=${type} => aceito=${data.accepted} janela=${data.window_id.slice(0,8)}... fila=${data.queued}${qp}`);
   return data;
 }
 
 async function main() {
-  console.log('=== Enviando 10 mensagens com o mesmo identificador ===');
-  for (let i = 0; i < 10; i++) {
-    const type = types[i % types.length];
-    await sendMessage('test-mesmo-id', type, i);
+  const identifiers = ['ident-1', 'ident-2', 'ident-3', 'ident-4', 'ident-5'];
+  let globalIndex = 0;
+
+  console.log('=== Enviando 5 mensagens para cada um dos 5 identificadores ===\n');
+
+  for (const ident of identifiers) {
+    console.log(`--- ${ident} ---`);
+    for (let i = 0; i < 5; i++) {
+      const type = types[globalIndex % types.length];
+      await sendMessage(ident, type, globalIndex);
+      globalIndex++;
+    }
+    console.log('');
   }
 
-  console.log('\n✅ Teste concluído!');
+  const total = globalIndex;
+  console.log(`\n✅ ${total} mensagens enviadas!`);
+  console.log('Aguardando processamento das janelas...');
+  console.log('Execute: node scripts/query-logs.js');
 }
 
 main().catch(console.error);

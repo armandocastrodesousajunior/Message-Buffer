@@ -128,27 +128,37 @@ export class WindowManagerService {
     const limit = buffer.max_concurrent_windows;
 
     while (true) {
-      const openCount = await this.bufferRepo.countOpenWindows(buffer.id);
       const timerCount = this.countTimersForBuffer(buffer.id);
+      if (limit !== null && timerCount >= limit) break;
 
-      if (limit !== null && openCount + timerCount >= limit) break;
-
-      const next = await this.waitingRepo.dequeue(buffer.id);
+      const next = await this.waitingRepo.findNextByBuffer(buffer.id);
       if (!next) break;
 
-      const window = await this.windowRepo.create(
-        buffer.id,
-        next.identifier,
-        buffer.window_time
+      const batch = await this.waitingRepo.dequeueByIdentifier(buffer.id, next.identifier);
+      if (batch.length === 0) break;
+
+      const existingWindow = await this.windowRepo.findOpenByIdentifier(
+        buffer.id, next.identifier
       );
-      await this.messageRepo.create(
-        window.id,
-        buffer.id,
-        next.identifier,
-        next.content,
-        next.type
-      );
-      await this.startWindow(buffer, window.id, next.identifier);
+
+      if (existingWindow) {
+        for (const msg of batch) {
+          await this.messageRepo.create(
+            existingWindow.id, buffer.id, msg.identifier, msg.content, msg.type
+          );
+        }
+        await this.resetWindow(buffer, existingWindow.id, next.identifier);
+      } else {
+        const window = await this.windowRepo.create(
+          buffer.id, next.identifier, buffer.window_time
+        );
+        for (const msg of batch) {
+          await this.messageRepo.create(
+            window.id, buffer.id, msg.identifier, msg.content, msg.type
+          );
+        }
+        await this.startWindow(buffer, window.id, next.identifier);
+      }
     }
   }
 

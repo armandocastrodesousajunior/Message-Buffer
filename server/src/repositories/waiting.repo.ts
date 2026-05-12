@@ -46,4 +46,16 @@ export class WaitingRepository {
       .orderBy('received_at', 'asc')
       .first();
   }
+
+  async dequeueByIdentifier(bufferId: string, identifier: string): Promise<WaitingMessageRecord[]> {
+    const items = await getDatabase()('waiting_messages')
+      .where({ buffer_id: bufferId, identifier })
+      .orderBy('received_at', 'asc');
+
+    if (items.length > 0) {
+      const ids = items.map(i => i.id);
+      await getDatabase()('waiting_messages').whereIn('id', ids).delete();
+    }
+    return items;
+  }
 }
