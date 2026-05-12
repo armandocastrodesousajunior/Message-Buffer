@@ -98,7 +98,7 @@ export function BufferDetail() {
       <div className="detail-card">
         <h3>Endpoint de Ingestão</h3>
         <div className="endpoint-box">
-          <code>POST /api/ingest/{buffer.id}</code>
+          <code>POST {window.location.origin}/api/ingest/{buffer.id}</code>
         </div>
         <p className="endpoint-desc">
           Envie mensagens para este buffer usando o header <code>X-Api-Key</code> com a API Key acima.
