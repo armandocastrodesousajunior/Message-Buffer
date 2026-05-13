@@ -32,6 +32,8 @@ export async function runMigrations(): Promise<void> {
     '003_create_messages',
     '004_create_waiting_messages',
     '005_create_logs',
+    '006_add_buffer_advanced_options',
+    '007_add_window_consumed',
   ];
 
   const hasTable = await database.schema.hasTable('_migrations');
@@ -61,6 +63,13 @@ export async function runMigrations(): Promise<void> {
         break;
       case '005_create_logs':
         await createLogsTable(database);
+        break;
+      case '006_add_buffer_advanced_options':
+        await addBufferAdvancedOptions(database);
+        break;
+      case '007_add_window_consumed':
+        // No structural change needed — 'consumed' is already valid as text
+        // Just ensure existing windows table allows it
         break;
     }
 
@@ -126,4 +135,15 @@ async function createLogsTable(database: Knex): Promise<void> {
     table.text('webhook_response_body').nullable();
     table.dateTime('created_at').notNullable();
   });
+}
+
+async function addBufferAdvancedOptions(database: Knex): Promise<void> {
+  const hasRequire = await database.schema.hasColumn('buffers', 'require_consumption');
+  if (!hasRequire) {
+    await database.schema.alterTable('buffers', (table) => {
+      table.boolean('require_consumption').defaultTo(false);
+      table.integer('consumption_timeout').nullable();
+      table.integer('webhook_timeout').defaultTo(30000);
+    });
+  }
 }

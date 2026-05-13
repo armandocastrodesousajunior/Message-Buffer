@@ -51,9 +51,15 @@ export function createDocsRoutes(): Router {
     .sidebar{
       width:var(--sidebar-w);flex-shrink:0;position:sticky;top:60px;
       height:calc(100vh - 60px);overflow-y:auto;padding:24px 16px 24px 24px;
-      border-right:1px solid var(--gray-200);background:var(--white);display:flex;flex-direction:column;gap:4px
+      border-right:1px solid var(--gray-200);background:var(--white)
     }
-    .sidebar-title{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--gray-400);margin-bottom:8px;padding-left:8px}
+    .sidebar details summary{list-style:none;display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 8px;margin-bottom:8px;border-radius:var(--radius-sm);user-select:none;transition:background .15s}
+    .sidebar details summary::-webkit-details-marker{display:none}
+    .sidebar details summary:hover{background:var(--gray-100)}
+    .sidebar details summary::before{content:"▶";font-size:.55rem;color:var(--gray-400);transition:transform .15s;flex-shrink:0}
+    .sidebar details[open] summary::before{transform:rotate(90deg)}
+    .sidebar-label{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gray-500)}
+    .sidebar-links{display:flex;flex-direction:column;gap:2px;padding-left:20px;margin-bottom:12px}
     .sidebar-link{
       display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:.8125rem;
       color:var(--gray-600);border-radius:var(--radius-sm);transition:all .15s;
@@ -106,7 +112,9 @@ export function createDocsRoutes(): Router {
     }
     .status-badge.open{background:var(--green-light);color:var(--green)}
     .status-badge.processing{background:var(--blue-light);color:var(--blue)}
-    .status-badge.closed{background:var(--gray-100);color:var(--gray-600)}
+    .status-badge.closed{background:#fffbeb;color:#d97706}
+    .status-badge.consumed{background:var(--green-light);color:var(--green)}
+    .status-badge.expired{background:var(--gray-100);color:var(--gray-500)}
 
     pre{background:var(--gray-900);color:var(--gray-100);padding:16px;border-radius:var(--radius-sm);overflow-x:auto;margin:12px 0;line-height:1.5;font-size:.8125rem}
     pre .cm{color:#94a3b8}
@@ -175,17 +183,29 @@ export function createDocsRoutes(): Router {
     </header>
     <div class="wrapper">
       <aside class="sidebar">
-        <div class="sidebar-title">Navegação</div>
-        <a href="#desenvolvedor" class="sidebar-link"><span class="ico">👤</span> Desenvolvedor</a>
-        <a href="#visao-geral" class="sidebar-link"><span class="ico">📖</span> Visão Geral</a>
-        <a href="#logica" class="sidebar-link"><span class="ico">🔄</span> Lógica de Funcionamento</a>
-        <a href="#mapa-mental" class="sidebar-link"><span class="ico">🧠</span> Mapa Mental</a>
-        <a href="#fila-espera" class="sidebar-link"><span class="ico">⏳</span> Fila de Espera</a>
-        <a href="#webhook" class="sidebar-link"><span class="ico">🔗</span> Payload do Webhook</a>
-        <a href="#endpoint" class="sidebar-link"><span class="ico">📡</span> Endpoint da API</a>
-        <a href="#tipos" class="sidebar-link"><span class="ico">📦</span> Tipos de Conteúdo</a>
-        <a href="#exemplos" class="sidebar-link"><span class="ico">📝</span> Exemplos</a>
-        <a href="#respostas" class="sidebar-link"><span class="ico">✅</span> Respostas</a>
+        <details>
+          <summary><span class="sidebar-label">Documentação</span></summary>
+          <div class="sidebar-links">
+            <a href="#desenvolvedor" class="sidebar-link"><span class="ico">👤</span> Desenvolvedor</a>
+            <a href="#visao-geral" class="sidebar-link"><span class="ico">📖</span> Visão Geral</a>
+            <a href="#logica" class="sidebar-link"><span class="ico">🔄</span> Lógica de Funcionamento</a>
+            <a href="#mapa-mental" class="sidebar-link"><span class="ico">🧠</span> Mapa Mental</a>
+            <a href="#fila-espera" class="sidebar-link"><span class="ico">⏳</span> Fila de Espera</a>
+            <a href="#webhook" class="sidebar-link"><span class="ico">🔗</span> Payload do Webhook</a>
+            <a href="#confirmacao" class="sidebar-link"><span class="ico">✅</span> Confirmação de Consumo</a>
+            <a href="#tipos" class="sidebar-link"><span class="ico">📦</span> Tipos de Conteúdo</a>
+            <a href="#exemplos" class="sidebar-link"><span class="ico">📝</span> Exemplos</a>
+            <a href="#respostas" class="sidebar-link"><span class="ico">✅</span> Respostas</a>
+          </div>
+        </details>
+        <details>
+          <summary><span class="sidebar-label">API Reference</span></summary>
+          <div class="sidebar-links">
+            <a href="#api-ingest" class="sidebar-link"><span class="ico">📤</span> Ingerir Mensagem</a>
+            <a href="#api-pending" class="sidebar-link"><span class="ico">📋</span> Listar Janelas</a>
+            <a href="#api-confirm" class="sidebar-link"><span class="ico">✅</span> Confirmar Consumo</a>
+          </div>
+        </details>
       </aside>
       <main class="main-content">
         <div class="page-header">
@@ -253,14 +273,16 @@ export function createDocsRoutes(): Router {
           <h4>2. Janela (Window)</h4>
           <p>
             Uma janela é criada quando a primeira mensagem de um determinado <strong>identificador</strong> chega.
-            Cada janela tem um ciclo de vida de 3 estados:
+            Cada janela tem um ciclo de vida de 4 estados:
           </p>
           <table>
             <thead><tr><th>Estado</th><th>Descrição</th></tr></thead>
             <tbody>
               <tr><td><span class="status-badge open">open</span></td><td>Janela aberta recebendo mensagens. Um timer interno conta o <code>window_time</code></td></tr>
               <tr><td><span class="status-badge processing">processing</span></td><td>Janela expirou. As mensagens estão sendo agrupadas e enviadas ao webhook</td></tr>
-              <tr><td><span class="status-badge closed">closed</span></td><td>Janela finalizada. O webhook já foi chamado e o resultado foi registrado nos logs</td></tr>
+              <tr><td><span class="status-badge closed">closed</span></td><td>Webhook chamado. Aguardando confirmação de consumo (se habilitado)</td></tr>
+              <tr><td><span class="status-badge consumed">consumed</span></td><td>Consumo confirmado. Ciclo encerrado.</td></tr>
+              <tr><td><span class="status-badge expired">expired</span></td><td>Tempo de confirmação expirou. Identificador desbloqueado automaticamente.</td></tr>
             </tbody>
           </table>
           <p>
@@ -439,33 +461,28 @@ export function createDocsRoutes(): Router {
           </p>
         </div>
 
-        <div class="detail-card" id="endpoint">
-          <h3>Endpoint da API</h3>
-          <div class="endpoint-box">
-            <code><span class="method-badge" style="margin-right:8px">POST</span> ${baseUrl}/api/ingest/:bufferId</code>
-          </div>
-          <div class="endpoint-desc">
-            Envia uma mensagem para o buffer. O <code>:bufferId</code> é o ID do buffer (UUID).
-          </div>
+        <div class="detail-card" id="confirmacao">
+          <h3>Confirmação de Consumo</h3>
+          <p>
+            Quando um buffer possui a opção <strong>"Requerer confirmação de consumo"</strong> ativada,
+            as janelas passam pelo estado <span class="status-badge closed">closed</span> após o envio ao webhook
+            e só transitam para <span class="status-badge consumed">consumed</span> quando o consumo é confirmado.
+          </p>
 
-          <h4>Cabeçalhos</h4>
-          <table>
-            <thead><tr><th>Header</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
-            <tbody>
-              <tr><td><code>X-Api-Key</code></td><td>Sim</td><td>Chave de API do buffer (gerada na criação do buffer)</td></tr>
-              <tr><td><code>Content-Type</code></td><td>Sim</td><td><code>application/json</code></td></tr>
-            </tbody>
-          </table>
+          <h4>Formas de confirmar</h4>
+          <ol>
+            <li><strong>Automática (retorno 200):</strong> Se o webhook de destino responder com HTTP <code>200</code>, a janela é marcada como <code>consumed</code> automaticamente. Retorno <code>202</code> mantém como <code>closed</code>.</li>
+            <li><strong>Timer de expiração:</strong> Se um <code>consumption_timeout</code> foi definido, ao expirar sem confirmação, o sistema considera automaticamente como <code>consumed</code>.</li>
+            <li><strong>Rota da API:</strong> Use a rota <code>POST /api/confirm/:windowId</code> com o header <code>X-Api-Key</code> para confirmar manualmente.</li>
+            <li><strong>Interface:</strong> Na tela de detalhes do buffer, clique em "Confirmar Consumo" nas janelas pendentes.</li>
+          </ol>
 
-          <h4>Corpo da requisição</h4>
-          <table>
-            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
-            <tbody>
-              <tr><td><code>identifier</code></td><td><code>string</code></td><td>Sim</td><td>Identificador para agrupar mensagens na mesma janela</td></tr>
-              <tr><td><code>type</code></td><td><code>string</code></td><td>Sim</td><td>Tipo do conteúdo: <code>string</code>, <code>number</code>, <code>boolean</code> ou <code>json</code></td></tr>
-              <tr><td><code>content</code></td><td><code>any</code></td><td>Sim</td><td>Conteúdo da mensagem (string, number, boolean, objeto ou array)</td></tr>
-            </tbody>
-          </table>
+          <h4>Bloqueio por identificador</h4>
+          <p>
+            Enquanto uma janela do identificador <strong>A</strong> estiver <code>closed</code> (não consumida),
+            novas mensagens do identificador <strong>A</strong> são enfileiradas. Os demais identificadores não
+            são afetados — apenas <strong>A</strong> fica bloqueado até que sua janela anterior seja confirmada.
+          </p>
         </div>
 
         <div class="detail-card" id="tipos">
@@ -610,21 +627,182 @@ console.log(response.data);</pre>
               <tr><td><code>window_id</code></td><td><code>string</code></td><td>ID da janela onde a mensagem foi alocada (vazio se <code>queued: true</code>)</td></tr>
               <tr><td><code>queued</code></td><td><code>boolean</code></td><td><code>true</code> se o limite de janelas concorrentes foi atingido e a mensagem foi para a fila de espera</td></tr>
               <tr><td><code>queue_position</code></td><td><code>number</code></td><td>Posição na fila de espera (presente apenas quando <code>queued: true</code>)</td></tr>
+              <tr><td><code>blocked</code></td><td><code>boolean</code></td><td><code>true</code> se o identificador possui uma janela anterior aguardando confirmação de consumo</td></tr>
             </tbody>
           </table>
-          <p style="font-size:.875rem;font-weight:600;color:var(--gray-800);margin-top:16px">Mensagem alocada na janela:</p>
+        </div>
+
+        <div class="detail-card section-divider">
+          <div style="text-align:center;padding:8px 0">
+            <span style="display:inline-block;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gray-400);background:var(--gray-50);padding:4px 20px;border-radius:9999px;border:1px solid var(--gray-200)">API Reference</span>
+          </div>
+        </div>
+
+        <div class="detail-card" id="api-ingest">
+          <h3>📤 Ingerir Mensagem</h3>
+          <p>Envia uma mensagem para o buffer. A mensagem é alocada em uma janela (ou enfileirada se o limite de janelas concorrentes foi atingido).</p>
+
+          <div class="endpoint-box">
+            <code><span class="method-badge" style="margin-right:8px">POST</span> ${baseUrl}/api/ingest/:bufferId</code>
+          </div>
+
+          <h4>Cabeçalhos</h4>
+          <table>
+            <thead><tr><th>Header</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Api-Key</code></td><td>Sim</td><td>Chave de API do buffer (gerada na criação)</td></tr>
+              <tr><td><code>Content-Type</code></td><td>Sim</td><td><code>application/json</code></td></tr>
+            </tbody>
+          </table>
+
+          <h4>Corpo da requisição</h4>
+          <table>
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><code>identifier</code></td><td><code>string</code></td><td>Sim</td><td>Identificador para agrupar mensagens na mesma janela</td></tr>
+              <tr><td><code>type</code></td><td><code>string</code></td><td>Sim</td><td>Tipo do conteúdo: <code>string</code>, <code>number</code>, <code>boolean</code> ou <code>json</code></td></tr>
+              <tr><td><code>content</code></td><td><code>any</code></td><td>Sim</td><td>Conteúdo da mensagem (string, number, boolean, objeto ou array)</td></tr>
+            </tbody>
+          </table>
+
+          <h4>Exemplo com curl</h4>
+          <pre><span class="cm"># curl</span>
+curl -X POST ${baseUrl}/api/ingest/SEU-BUFFER-ID \\
+  -H "<span class="str">Content-Type: application/json</span>" \\
+  -H "<span class="str">X-Api-Key: SUA-API-KEY</span>" \\
+  -d '{
+    "<span class="hl">identifier</span>": "<span class="str">sessao-usuario-123</span>",
+    "<span class="hl">type</span>": "<span class="str">json</span>",
+    "<span class="hl">content</span>": {
+      "evento": "clique",
+      "elemento": "botao-comprar"
+    }
+  }'</pre>
+
+          <h4>Resposta (200) — alocada na janela</h4>
           <pre>{
   "accepted": true,
   "window_id": "550e8400-e29b-41d4-a716-446655440000",
-  "queued": false
+  "queued": false,
+  "blocked": false
 }</pre>
-          <p style="font-size:.875rem;font-weight:600;color:var(--gray-800);margin-top:20px">Mensagem enfileirada (limite de janelas atingido):</p>
+
+          <h4>Resposta (200) — enfileirada (limite de janelas)</h4>
           <pre>{
   "accepted": true,
   "window_id": "",
   "queued": true,
-  "queue_position": 3
+  "queue_position": 3,
+  "blocked": false
 }</pre>
+
+          <h4>Resposta (200) — enfileirada (identificador bloqueado)</h4>
+          <pre>{
+  "accepted": true,
+  "window_id": "",
+  "queued": true,
+  "queue_position": 2,
+  "blocked": true
+}</pre>
+
+          <h4>Respostas de erro</h4>
+          <table>
+            <thead><tr><th>Código</th><th>Significado</th></tr></thead>
+            <tbody>
+              <tr><td><strong>400</strong></td><td>Campos obrigatórios ausentes ou <code>type</code> inválido</td></tr>
+              <tr><td><strong>401</strong></td><td>Header <code>X-Api-Key</code> ausente</td></tr>
+              <tr><td><strong>404</strong></td><td>Buffer não encontrado ou API Key inválida</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="detail-card" id="api-pending">
+          <h3>📋 Listar Janelas</h3>
+          <p>Retorna todas as janelas de um buffer. Opcionalmente filtra por status para consultar apenas janelas abertas, em processamento, pendentes, consumidas ou expiradas.</p>
+
+          <div class="endpoint-box">
+            <code><span class="method-badge" style="margin-right:8px">GET</span> ${baseUrl}/api/windows?bufferId=SEU-BUFFER-ID<span style="color:var(--gray-500)">&amp;status=closed</span></code>
+          </div>
+
+          <h4>Cabeçalhos</h4>
+          <table>
+            <thead><tr><th>Header</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Api-Key</code></td><td>Sim</td><td>Chave de API do buffer</td></tr>
+            </tbody>
+          </table>
+
+          <h4>Parâmetros de query</h4>
+          <table>
+            <thead><tr><th>Parâmetro</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><code>bufferId</code></td><td><code>string</code></td><td>Sim</td><td>ID do buffer (UUID) para consultar as janelas</td></tr>
+              <tr><td><code>status</code></td><td><code>string</code></td><td>Não</td><td>Filtro opcional: <code>open</code>, <code>processing</code>, <code>closed</code>, <code>consumed</code> ou <code>expired</code></td></tr>
+            </tbody>
+          </table>
+
+          <h4>Exemplo com curl</h4>
+          <pre><span class="cm"># curl  todas as janelas</span>
+curl "${baseUrl}/api/windows?bufferId=SEU-BUFFER-ID" \\
+  -H "<span class="str">X-Api-Key: SUA-API-KEY</span>"
+
+<span class="cm"># curl  filtrando por status</span>
+curl "${baseUrl}/api/windows?bufferId=SEU-BUFFER-ID<span class="hl">&status=closed</span>" \\
+  -H "<span class="str">X-Api-Key: SUA-API-KEY</span>"</pre>
+
+          <h4>Resposta (200)</h4>
+          <pre>{
+  "windows": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "buffer_id": "uuid-do-buffer",
+      "identifier": "sessao-usuario-123",
+      "status": "closed",
+      "expires_at": "2026-05-12T23:37:06.630Z",
+      "created_at": "2026-05-12T23:36:51.590Z",
+      "webhook_response_status": 200,
+      "webhook_sent_at": "2026-05-12T23:37:07.000Z"
+    }
+  ]
+}</pre>
+          <p style="color:var(--gray-500);font-size:.875rem">Os campos <code>webhook_response_status</code> e <code>webhook_sent_at</code> trazem o status HTTP retornado pelo webhook de destino e o momento em que foi enviado (presentes apenas quando há log da janela).</p>
+        </div>
+
+        <div class="detail-card" id="api-confirm">
+          <h3>✅ Confirmar Consumo</h3>
+          <p>Confirma manualmente o consumo de uma janela com status <span class="status-badge closed">closed</span>, transitando-a para <span class="status-badge consumed">consumed</span>. Isso desbloqueia o identificador para novas janelas (quando <code>require_consumption</code> está ativo).</p>
+
+          <div class="endpoint-box">
+            <code><span class="method-badge" style="margin-right:8px">POST</span> ${baseUrl}/api/confirm/:windowId</code>
+          </div>
+
+          <h4>Cabeçalhos</h4>
+          <table>
+            <thead><tr><th>Header</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Api-Key</code></td><td>Sim</td><td>API Key do buffer dono da janela</td></tr>
+            </tbody>
+          </table>
+
+          <h4>Exemplo com curl</h4>
+          <pre><span class="cm"># curl</span>
+curl -X POST ${baseUrl}/api/confirm/ID-DA-JANELA \\
+  -H "<span class="str">X-Api-Key: SUA-API-KEY</span>"</pre>
+
+          <h4>Resposta (200)</h4>
+          <pre>{
+  "status": "consumed"
+}</pre>
+
+          <h4>Respostas de erro</h4>
+          <table>
+            <thead><tr><th>Código</th><th>Significado</th></tr></thead>
+            <tbody>
+              <tr><td><strong>400</strong></td><td>Janela não está com status <code>closed</code></td></tr>
+              <tr><td><strong>401</strong></td><td>Header <code>X-Api-Key</code> ausente</td></tr>
+              <tr><td><strong>404</strong></td><td>Janela não encontrada ou API Key inválida</td></tr>
+            </tbody>
+          </table>
         </div>
 
         <div style="text-align:center;padding:24px 0;color:var(--gray-400);font-size:.875rem">

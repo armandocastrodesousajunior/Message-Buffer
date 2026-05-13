@@ -47,6 +47,21 @@ export class WaitingRepository {
       .first();
   }
 
+  async findNextUnlocked(bufferId: string): Promise<WaitingMessageRecord | undefined> {
+    const items = await getDatabase()('waiting_messages')
+      .where({ buffer_id: bufferId })
+      .orderBy('received_at', 'asc');
+
+    for (const item of items) {
+      const blocked = await getDatabase()('windows')
+        .where({ buffer_id: bufferId, identifier: item.identifier })
+        .whereIn('status', ['closed', 'processing'])
+        .first();
+      if (!blocked) return item;
+    }
+    return undefined;
+  }
+
   async dequeueByIdentifier(bufferId: string, identifier: string): Promise<WaitingMessageRecord[]> {
     const items = await getDatabase()('waiting_messages')
       .where({ buffer_id: bufferId, identifier })

@@ -59,10 +59,10 @@ async function main(): Promise<void> {
   app.use(express.json());
 
   // API de ingestão (pública, autenticada por X-Api-Key)
-  app.use('/api', createApiRoutes(ingestionService));
+  app.use('/api', createApiRoutes(ingestionService, windowRepo, bufferRepo, windowManager));
 
   // API administrativa (protegida por Bearer token)
-  app.use('/api/web', authMiddleware, createWebRoutes(bufferService, logRepo));
+  app.use('/api/web', authMiddleware, createWebRoutes(bufferService, logRepo, windowRepo, windowManager));
 
   // Documentação da API
   app.use('/docs', createDocsRoutes());

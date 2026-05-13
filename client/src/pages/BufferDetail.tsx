@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, BufferData, LogData } from '../api/client';
+import { api, BufferData, LogData, WindowData } from '../api/client';
 
 export function BufferDetail() {
   const { id } = useParams<{ id: string }>();
@@ -8,29 +8,39 @@ export function BufferDetail() {
 
   const [buffer, setBuffer] = useState<BufferData | null>(null);
   const [logs, setLogs] = useState<LogData[]>([]);
+  const [windows, setWindows] = useState<WindowData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
+  const [confirmingId, setConfirmingId] = useState('');
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  useEffect(() => {
-    if (id) loadData(id);
-  }, [id]);
-
-  const loadData = async (bufferId: string) => {
+  const fetchData = useCallback(async (bufferId: string, isInitial: boolean) => {
+    if (isInitial) setLoading(true);
     try {
-      setLoading(true);
-      const [buf, logData] = await Promise.all([
+      const [buf, logData, winData] = await Promise.all([
         api.buffers.get(bufferId),
         api.buffers.logs(bufferId),
+        api.buffers.windows(bufferId, 'closed').catch(() => [] as WindowData[]),
       ]);
       setBuffer(buf);
       setLogs(logData);
+      setWindows(winData);
+      const now = new Date();
+      setLastUpdate(now);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar dados');
+      if (isInitial) setError(err instanceof Error ? err.message : 'Erro ao carregar dados');
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    fetchData(id, true);
+    const interval = setInterval(() => fetchData(id, false), 5000);
+    return () => clearInterval(interval);
+  }, [id, fetchData]);
 
   const copyToClipboard = useCallback((text: string, field: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -39,9 +49,26 @@ export function BufferDetail() {
     });
   }, []);
 
+  const handleConfirm = async (windowId: string) => {
+    if (!buffer) return;
+    setConfirmingId(windowId);
+    try {
+      await api.buffers.confirmWindow(buffer.id, windowId);
+      setWindows(prev => prev.filter(w => w.id !== windowId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao confirmar consumo');
+    } finally {
+      setConfirmingId('');
+    }
+  };
+
   if (loading) return <div className="loading">Carregando...</div>;
   if (error) return <div className="alert alert-error">{error}</div>;
   if (!buffer) return <div className="alert alert-error">Buffer não encontrado</div>;
+
+  const lastUpdateText = lastUpdate
+    ? `Última atualização: ${lastUpdate.toLocaleTimeString('pt-BR')}`
+    : '';
 
   return (
     <div>
@@ -81,6 +108,14 @@ export function BufferDetail() {
             <span>{buffer.max_concurrent_windows ?? 'Ilimitado'}</span>
           </div>
           <div className="detail-item">
+            <span className="detail-label">Confirmação</span>
+            <span>{buffer.require_consumption ? `Sim (timeout: ${buffer.consumption_timeout ?? '∞'}ms)` : 'Não'}</span>
+          </div>
+          <div className="detail-item">
+            <span className="detail-label">Timeout Webhook</span>
+            <span>{buffer.webhook_timeout}ms</span>
+          </div>
+          <div className="detail-item">
             <span className="detail-label">Webhook</span>
             <span className="truncate">{buffer.webhook_url}</span>
           </div>
@@ -117,12 +152,49 @@ export function BufferDetail() {
         </p>
       </div>
 
+      {!!buffer.require_consumption && (
+        <div className="detail-card">
+          <div className="logs-header">
+            <h3>Confirmações Pendentes</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lastUpdateText}</span>
+          </div>
+          {windows.length === 0 ? (
+            <div className="empty-state">
+              <p>Nenhuma confirmação pendente.</p>
+            </div>
+          ) : (
+            <div style={{ marginTop: 12 }}>
+              {windows.map(w => (
+                <div key={w.id} className="log-entry" style={{
+                  borderLeft: '4px solid #d97706',
+                  marginBottom: 8,
+                }}>
+                  <div className="log-header">
+                    <span className="log-identifier">{w.identifier}</span>
+                    <span className="status-badge closed">Pendente</span>
+                    <span className="log-time">
+                      {new Date(w.created_at).toLocaleString('pt-BR')}
+                    </span>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => handleConfirm(w.id)}
+                      disabled={confirmingId === w.id}
+                      style={{ marginLeft: 'auto', padding: '2px 12px', fontSize: '0.75rem' }}
+                    >
+                      {confirmingId === w.id ? 'Confirmando...' : 'Confirmar Consumo'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="detail-card">
         <div className="logs-header">
           <h3>Logs de Processamento</h3>
-          <button className="btn btn-sm btn-outline" onClick={() => loadData(buffer.id)}>
-            Atualizar
-          </button>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lastUpdateText}</span>
         </div>
 
         {logs.length === 0 ? (

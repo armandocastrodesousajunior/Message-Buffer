@@ -10,6 +10,7 @@ export interface IngestResult {
   window_id: string;
   queued: boolean;
   queue_position?: number;
+  blocked?: boolean;
 }
 
 export class IngestionService {
@@ -27,6 +28,10 @@ export class IngestionService {
       throw new Error('BUFFER_NOT_FOUND');
     }
 
+    const blocked = buffer.require_consumption
+      ? !!(await this.windowRepo.findBlockedByIdentifier(bufferId, request.identifier))
+      : false;
+
     const openWindow = await this.windowRepo.findOpenByIdentifier(bufferId, request.identifier);
 
     if (openWindow) {
@@ -38,13 +43,19 @@ export class IngestionService {
         request.type
       );
       await this.windowManager.resetWindow(buffer, openWindow.id, request.identifier);
-      return { accepted: true, window_id: openWindow.id, queued: false };
+      return { accepted: true, window_id: openWindow.id, queued: false, blocked };
     }
 
     const openCount = await this.bufferRepo.countOpenWindows(bufferId);
     const limit = buffer.max_concurrent_windows;
 
     if (limit === null || openCount < limit) {
+      if (blocked) {
+        await this.waitingRepo.enqueue(bufferId, request.identifier, request.content, request.type);
+        const queuePosition = await this.waitingRepo.countByBuffer(bufferId);
+        return { accepted: true, window_id: '', queued: true, queue_position: queuePosition, blocked };
+      }
+
       const window = await this.windowRepo.create(bufferId, request.identifier, buffer.window_time);
       await this.messageRepo.create(
         window.id,
@@ -55,11 +66,11 @@ export class IngestionService {
       );
 
       await this.windowManager.startWindow(buffer, window.id, request.identifier);
-      return { accepted: true, window_id: window.id, queued: false };
+      return { accepted: true, window_id: window.id, queued: false, blocked };
     }
 
     await this.waitingRepo.enqueue(bufferId, request.identifier, request.content, request.type);
     const queuePosition = await this.waitingRepo.countByBuffer(bufferId);
-    return { accepted: true, window_id: '', queued: true, queue_position: queuePosition };
+    return { accepted: true, window_id: '', queued: true, queue_position: queuePosition, blocked };
   }
 }

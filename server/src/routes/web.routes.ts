@@ -1,10 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { BufferService } from '../services/buffer.service.js';
+import { WindowRepository } from '../repositories/window.repo.js';
+import { WindowManagerService } from '../services/window-manager.service.js';
 import { LogRepository } from '../repositories/log.repo.js';
 
 export function createWebRoutes(
   bufferService: BufferService,
-  logRepo: LogRepository
+  logRepo: LogRepository,
+  windowRepo?: WindowRepository,
+  windowManager?: WindowManagerService
 ): Router {
   const router = Router();
 
@@ -14,7 +18,7 @@ export function createWebRoutes(
   });
 
   router.post('/buffers', async (req: Request, res: Response) => {
-    const { name, window_time, webhook_url, max_concurrent_windows } = req.body;
+    const { name, window_time, webhook_url, max_concurrent_windows, require_consumption, consumption_timeout, webhook_timeout } = req.body;
 
     if (!name || !window_time || !webhook_url) {
       res.status(400).json({
@@ -28,9 +32,18 @@ export function createWebRoutes(
       window_time: parseInt(window_time, 10),
       webhook_url,
       max_concurrent_windows:
-        max_concurrent_windows === undefined || max_concurrent_windows === ''
+        max_concurrent_windows == null || max_concurrent_windows === ''
           ? null
           : parseInt(max_concurrent_windows, 10),
+      require_consumption: require_consumption === true,
+      consumption_timeout:
+        consumption_timeout == null || consumption_timeout === ''
+          ? null
+          : parseInt(consumption_timeout, 10),
+      webhook_timeout:
+        webhook_timeout == null || webhook_timeout === ''
+          ? 30000
+          : parseInt(webhook_timeout, 10),
     });
 
     res.status(201).json(buffer);
@@ -46,18 +59,26 @@ export function createWebRoutes(
   });
 
   router.put('/buffers/:id', async (req: Request, res: Response) => {
-    const { name, window_time, webhook_url, max_concurrent_windows } = req.body;
+    const { name, window_time, webhook_url, max_concurrent_windows, require_consumption, consumption_timeout, webhook_timeout } = req.body;
 
     const buffer = await bufferService.update(req.params.id, {
       name,
       window_time: window_time ? parseInt(window_time, 10) : undefined,
       webhook_url,
       max_concurrent_windows:
-        max_concurrent_windows === undefined || max_concurrent_windows === ''
+        max_concurrent_windows == null || max_concurrent_windows === ''
           ? null
-          : max_concurrent_windows
-            ? parseInt(max_concurrent_windows, 10)
-            : undefined,
+          : parseInt(max_concurrent_windows, 10),
+      require_consumption:
+        require_consumption == null ? undefined : require_consumption === true,
+      consumption_timeout:
+        consumption_timeout == null || consumption_timeout === ''
+          ? null
+          : parseInt(consumption_timeout, 10),
+      webhook_timeout:
+        webhook_timeout == null || webhook_timeout === ''
+          ? undefined
+          : parseInt(webhook_timeout, 10),
     });
 
     if (!buffer) {
@@ -80,6 +101,33 @@ export function createWebRoutes(
     const logs = await logRepo.findByBufferId(req.params.id);
     res.json(logs);
   });
+
+  if (windowRepo) {
+    router.get('/buffers/:id/windows', async (req: Request, res: Response) => {
+      const status = req.query.status as string | undefined;
+      const windows = await windowRepo.findByBuffer(
+        req.params.id,
+        status as any
+      );
+      res.json(windows);
+    });
+  }
+
+  if (windowRepo && windowManager) {
+    router.post('/buffers/:bufferId/windows/:windowId/confirm', async (req: Request, res: Response) => {
+      const window = await windowRepo.findById(req.params.windowId);
+      if (!window) {
+        res.status(404).json({ error: 'Window not found' });
+        return;
+      }
+      if (window.status !== 'closed') {
+        res.status(400).json({ error: `Window status is '${window.status}', expected 'closed'` });
+        return;
+      }
+      await windowManager.confirmConsumption(window.buffer_id, window.identifier, window.id);
+      res.json({ status: 'consumed' });
+    });
+  }
 
   return router;
 }

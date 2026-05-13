@@ -42,6 +42,9 @@ O Message Buffer é composto por **4 componentes principais** que trabalham junt
 | `window_time` | Tempo da janela em segundos (ex: 30) |
 | `webhook_url` | URL para onde as mensagens agrupadas serao enviadas |
 | `max_concurrent_windows` | Limite maximo de janelas simultaneas (opcional, null = ilimitado) |
+| `require_consumption` | Se `true`, exige confirmação de consumo antes de liberar o identificador |
+| `consumption_timeout` | Tempo em ms para expiração automática da confirmação (null = sem prazo) |
+| `webhook_timeout` | Timeout da requisição ao webhook em ms (padrão: 30000) |
 | `api_key` | Chave de API unica gerada automaticamente (UUID) |
 
 ### 2. Janela (Window)
@@ -52,7 +55,8 @@ Uma janela é criada quando a primeira mensagem de um determinado `identifier` c
 |--------|-----------|
 | ✅ `open` | Janela aberta recebendo mensagens. Um timer interno conta o `window_time` |
 | 🔄 `processing` | Janela expirou. As mensagens estao sendo agrupadas e enviadas ao webhook |
-| ✅ `closed` | Janela finalizada. O webhook já foi chamado e o resultado foi registrado nos logs |
+| ⏳ `closed` | Webhook chamado. Aguardando confirmação de consumo (se habilitado) |
+| ✅ `consumed` | Consumo confirmado. Ciclo encerrado |
 
 Enquanto a janela está **open**, todas as mensagens que chegam com o mesmo `identifier` sao adicionadas a ela. Quando o timer dispara, a janela transita para **processing**, as mensagens sao consolidadas em um payload JSON e enviadas via POST para o webhook configurado. Apos a resposta (sucesso ou erro), a janela é marcada como **closed**.
 
@@ -162,6 +166,17 @@ A fila de espera garante que **nenhuma mensagem seja perdida** quando o limite d
 4. A resposta tem `queued: true` e `window_id: ""`
 5. Assim que uma das 3 janelas for fechada, o sistema pega **TODAS as mensagens da fila com aquele identificador** e cria uma única janela com todas elas
 
+### Confirmação de Consumo
+
+Quando um buffer possui **"Requerer confirmação de consumo"** ativado, as janelas passam por um estado adicional `closed → consumed`:
+
+- **Webhook retorna `200`:** janela vai direto para `consumed`
+- **Webhook retorna outro status (ex: `202`):** janela fica `closed` até confirmação manual ou timeout
+- **Timer de expiração:** se `consumption_timeout` foi definido, ao expirar o sistema confirma automaticamente
+- **Confirmação manual:** via rota `POST /api/confirm/:windowId` com `X-Api-Key`, ou pela interface em "Confirmar Consumo"
+
+Enquanto uma janela do identificador **A** estiver `closed`, novas mensagens de **A** vão para a fila de espera — outros identificadores não são bloqueados.
+
 ### Comportamento em reinicializaçao
 
 Tanto as janelas abertas quanto a fila de espera sao armazenadas no banco de dados SQLite. Ao reiniciar, o servidor **recupera automaticamente** todas as janelas que estavam abertas e reativa os timers. Se alguma janela já deveria ter expirado, ela é processada imediatamente.
@@ -170,22 +185,22 @@ Tanto as janelas abertas quanto a fila de espera sao armazenadas no banco de dad
 
 ---
 
-## 📡 API de Ingestão
+## 📡 API Pública
 
-### Endpoint
+Todas as rotas públicas são autenticadas pelo header `X-Api-Key` (a chave gerada na criação do buffer).
+
+### Ingerir Mensagem
 
 ```
 POST /api/ingest/:bufferId
 ```
 
-### Cabeçalhos
-
 | Header | Obrigatório | Descrição |
 |--------|-------------|-----------|
-| `X-Api-Key` | Sim | Chave de API do buffer (gerada na criação do buffer) |
+| `X-Api-Key` | Sim | Chave de API do buffer |
 | `Content-Type` | Sim | `application/json` |
 
-### Corpo da Requisição
+**Corpo da Requisição**
 
 ```json
 {
@@ -327,6 +342,73 @@ const response = await axios.post(
   }
 );
 console.log(response.data);
+```
+
+---
+
+### Listar Janelas Pendentes
+
+Retorna todas as janelas de um buffer com status `closed` aguardando confirmação de consumo.
+
+```
+GET /api/windows/pending?bufferId=SEU-BUFFER-ID
+```
+
+| Header | Obrigatório | Descrição |
+|--------|-------------|-----------|
+| `X-Api-Key` | Sim | Chave de API do buffer |
+
+**Exemplo com curl:**
+
+```bash
+curl "http://localhost:3000/api/windows/pending?bufferId=SEU-BUFFER-ID" \
+  -H "X-Api-Key: SUA-API-KEY"
+```
+
+**Resposta (200):**
+
+```json
+{
+  "windows": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "buffer_id": "uuid-do-buffer",
+      "identifier": "sessao-usuario-123",
+      "status": "closed",
+      "expires_at": "2026-05-12T23:37:06.630Z",
+      "created_at": "2026-05-12T23:36:51.590Z"
+    }
+  ]
+}
+```
+
+---
+
+### Confirmar Consumo
+
+Confirma manualmente o consumo de uma janela, transitando de `closed` para `consumed`. Desbloqueia o identificador para novas janelas.
+
+```
+POST /api/confirm/:windowId
+```
+
+| Header | Obrigatório | Descrição |
+|--------|-------------|-----------|
+| `X-Api-Key` | Sim | Chave de API do buffer dono da janela |
+
+**Exemplo com curl:**
+
+```bash
+curl -X POST http://localhost:3000/api/confirm/ID-DA-JANELA \
+  -H "X-Api-Key: SUA-API-KEY"
+```
+
+**Resposta (200):**
+
+```json
+{
+  "status": "consumed"
+}
 ```
 
 ---

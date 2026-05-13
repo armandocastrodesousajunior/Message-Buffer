@@ -4,6 +4,9 @@ export interface BufferRecord {
   window_time: number;
   webhook_url: string;
   max_concurrent_windows: number | null;
+  require_consumption: boolean;
+  consumption_timeout: number | null;
+  webhook_timeout: number;
   api_key: string;
   created_at: string;
   updated_at: string;
@@ -13,7 +16,7 @@ export interface WindowRecord {
   id: string;
   buffer_id: string;
   identifier: string;
-  status: 'open' | 'processing' | 'closed';
+  status: 'open' | 'processing' | 'closed' | 'consumed' | 'expired';
   expires_at: string;
   created_at: string;
 }
@@ -69,6 +72,9 @@ export interface CreateBufferInput {
   window_time: number;
   webhook_url: string;
   max_concurrent_windows: number | null;
+  require_consumption?: boolean;
+  consumption_timeout?: number | null;
+  webhook_timeout?: number;
 }
 
 export interface UpdateBufferInput {
@@ -76,4 +82,7 @@ export interface UpdateBufferInput {
   window_time?: number;
   webhook_url?: string;
   max_concurrent_windows?: number | null;
+  require_consumption?: boolean;
+  consumption_timeout?: number | null;
+  webhook_timeout?: number;
 }

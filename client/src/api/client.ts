@@ -49,6 +49,9 @@ export interface BufferData {
   window_time: number;
   webhook_url: string;
   max_concurrent_windows: number | null;
+  require_consumption: boolean;
+  consumption_timeout: number | null;
+  webhook_timeout: number;
   api_key: string;
   created_at: string;
   updated_at: string;
@@ -59,6 +62,9 @@ export interface CreateBufferInput {
   window_time: number;
   webhook_url: string;
   max_concurrent_windows: number | null;
+  require_consumption?: boolean;
+  consumption_timeout?: number | null;
+  webhook_timeout?: number;
 }
 
 export interface UpdateBufferInput {
@@ -66,6 +72,18 @@ export interface UpdateBufferInput {
   window_time?: number;
   webhook_url?: string;
   max_concurrent_windows?: number | null;
+  require_consumption?: boolean;
+  consumption_timeout?: number | null;
+  webhook_timeout?: number;
+}
+
+export interface WindowData {
+  id: string;
+  buffer_id: string;
+  identifier: string;
+  status: 'open' | 'processing' | 'closed' | 'consumed' | 'expired';
+  expires_at: string;
+  created_at: string;
 }
 
 export interface LogData {
@@ -96,5 +114,11 @@ export const api = {
     delete: (id: string) =>
       request<void>(`/buffers/${id}`, { method: 'DELETE' }),
     logs: (id: string) => request<LogData[]>(`/buffers/${id}/logs`),
+    windows: (id: string, status?: string) =>
+      request<WindowData[]>(`/buffers/${id}/windows${status ? `?status=${status}` : ''}`),
+    confirmWindow: (bufferId: string, windowId: string) =>
+      request<{ status: string }>(`/buffers/${bufferId}/windows/${windowId}/confirm`, {
+        method: 'POST',
+      }),
   },
 };

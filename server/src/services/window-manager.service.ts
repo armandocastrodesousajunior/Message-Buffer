@@ -12,6 +12,7 @@ interface ActiveWindow {
 
 export class WindowManagerService {
   private activeTimers = new Map<string, ActiveWindow>();
+  private consumptionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private bufferRepo: BufferRepository,
@@ -118,10 +119,58 @@ export class WindowManagerService {
       })),
     };
 
-    await this.webhookService.dispatch(buffer, windowId, identifier, payload);
-    await this.windowRepo.updateStatus(windowId, 'closed');
+    const result = await this.webhookService.dispatch(buffer, windowId, identifier, payload);
+
+    if (buffer.require_consumption && result.status === 200) {
+      await this.windowRepo.updateStatus(windowId, 'consumed');
+    } else {
+      await this.windowRepo.updateStatus(windowId, 'closed');
+
+      if (buffer.require_consumption && buffer.consumption_timeout != null) {
+        this.startConsumptionTimer(buffer, windowId, identifier);
+      }
+    }
 
     await this.processQueue(buffer);
+  }
+
+  async confirmConsumption(bufferId: string, identifier: string, windowId: string): Promise<void> {
+    const cKey = this.consTimerKey(bufferId, identifier);
+    const existing = this.consumptionTimers.get(cKey);
+    if (existing) {
+      clearTimeout(existing);
+      this.consumptionTimers.delete(cKey);
+    }
+
+    await this.windowRepo.updateStatus(windowId, 'consumed');
+
+    const buffer = await this.bufferRepo.findById(bufferId);
+    if (buffer) {
+      await this.processQueue(buffer);
+    }
+  }
+
+  private startConsumptionTimer(buffer: BufferRecord, windowId: string, identifier: string): void {
+    const cKey = this.consTimerKey(buffer.id, identifier);
+    const existing = this.consumptionTimers.get(cKey);
+    if (existing) {
+      clearTimeout(existing);
+      this.consumptionTimers.delete(cKey);
+    }
+
+    const timer = setTimeout(async () => {
+      this.consumptionTimers.delete(cKey);
+      await this.windowRepo.updateStatus(windowId, 'expired');
+      await this.processQueue(buffer);
+    }, buffer.consumption_timeout!);
+    timer.unref();
+
+    this.consumptionTimers.set(cKey, timer);
+  }
+
+  private async isIdentifierBlocked(bufferId: string, identifier: string): Promise<boolean> {
+    const blocked = await this.windowRepo.findBlockedByIdentifier(bufferId, identifier);
+    return !!blocked;
   }
 
   private async processQueue(buffer: BufferRecord): Promise<void> {
@@ -131,8 +180,16 @@ export class WindowManagerService {
       const timerCount = this.countTimersForBuffer(buffer.id);
       if (limit !== null && timerCount >= limit) break;
 
-      const next = await this.waitingRepo.findNextByBuffer(buffer.id);
+      let next = await this.waitingRepo.findNextByBuffer(buffer.id);
       if (!next) break;
+
+      if (buffer.require_consumption) {
+        const blocked = await this.isIdentifierBlocked(buffer.id, next.identifier);
+        if (blocked) {
+          next = await this.waitingRepo.findNextUnlocked(buffer.id);
+          if (!next) break;
+        }
+      }
 
       const batch = await this.waitingRepo.dequeueByIdentifier(buffer.id, next.identifier);
       if (batch.length === 0) break;
@@ -175,11 +232,19 @@ export class WindowManagerService {
     return `${bufferId}:${identifier}`;
   }
 
+  private consTimerKey(bufferId: string, identifier: string): string {
+    return `cons:${bufferId}:${identifier}`;
+  }
+
   clearAllTimers(): void {
     for (const [, active] of this.activeTimers) {
       clearTimeout(active.timer);
     }
     this.activeTimers.clear();
+    for (const [, timer] of this.consumptionTimers) {
+      clearTimeout(timer);
+    }
+    this.consumptionTimers.clear();
   }
 }
 

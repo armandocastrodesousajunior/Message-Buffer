@@ -40,7 +40,7 @@ export class WebhookService {
     try {
       const response = await axios.post(buffer.webhook_url, payload, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 30000,
+        timeout: (buffer.webhook_timeout ?? 30000),
         validateStatus: () => true,
       });
       status = response.status;
