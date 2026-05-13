@@ -49,7 +49,7 @@ O Message Buffer é composto por **4 componentes principais** que trabalham junt
 
 ### 2. Janela (Window)
 
-Uma janela é criada quando a primeira mensagem de um determinado `identifier` chega. Cada janela tem um ciclo de vida de **3 estados**:
+Uma janela é criada quando a primeira mensagem de um determinado `identifier` chega. Cada janela tem um ciclo de vida de **5 estados**:
 
 | Estado | Descrição |
 |--------|-----------|
@@ -57,6 +57,7 @@ Uma janela é criada quando a primeira mensagem de um determinado `identifier` c
 | 🔄 `processing` | Janela expirou. As mensagens estao sendo agrupadas e enviadas ao webhook |
 | ⏳ `closed` | Webhook chamado. Aguardando confirmação de consumo (se habilitado) |
 | ✅ `consumed` | Consumo confirmado. Ciclo encerrado |
+| ⌛ `expired` | Tempo de confirmação expirou. Identificador desbloqueado automaticamente |
 
 Enquanto a janela está **open**, todas as mensagens que chegam com o mesmo `identifier` sao adicionadas a ela. Quando o timer dispara, a janela transita para **processing**, as mensagens sao consolidadas em um payload JSON e enviadas via POST para o webhook configurado. Apos a resposta (sucesso ou erro), a janela é marcada como **closed**.
 
