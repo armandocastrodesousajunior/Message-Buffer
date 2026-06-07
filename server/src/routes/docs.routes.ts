@@ -204,6 +204,7 @@ export function createDocsRoutes(): Router {
             <a href="#api-ingest" class="sidebar-link"><span class="ico">📤</span> Ingerir Mensagem</a>
             <a href="#api-pending" class="sidebar-link"><span class="ico">📋</span> Listar Janelas</a>
             <a href="#api-confirm" class="sidebar-link"><span class="ico">✅</span> Confirmar Consumo</a>
+            <a href="#api-reset" class="sidebar-link"><span class="ico">⏱️</span> Resetar Timer</a>
           </div>
         </details>
       </aside>
@@ -801,6 +802,70 @@ curl -X POST ${baseUrl}/api/confirm/ID-DA-JANELA \\
               <tr><td><strong>400</strong></td><td>Janela não está com status <code>closed</code></td></tr>
               <tr><td><strong>401</strong></td><td>Header <code>X-Api-Key</code> ausente</td></tr>
               <tr><td><strong>404</strong></td><td>Janela não encontrada ou API Key inválida</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="detail-card" id="api-reset">
+          <h3>⏱️ Resetar Timer</h3>
+          <p>Reinicia o cronômetro de uma janela aberta para um determinado identificador. O tempo voltará a contar do zero a partir do momento da requisição, assumindo a duração total (<code>window_time</code>) configurada no buffer.</p>
+          <div class="note">
+            <strong>Nota:</strong> Se não houver nenhuma janela aberta para o identificador fornecido, a API retornará sucesso (200 OK), informando que nenhuma janela foi resetada.
+          </div>
+
+          <div class="endpoint-box">
+            <code><span class="method-badge" style="margin-right:8px">POST</span> ${baseUrl}/api/reset-timer/:bufferId</code>
+          </div>
+
+          <h4>Cabeçalhos</h4>
+          <table>
+            <thead><tr><th>Header</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Api-Key</code></td><td>Sim</td><td>API Key do buffer</td></tr>
+              <tr><td><code>Content-Type</code></td><td>Sim</td><td><code>application/json</code></td></tr>
+            </tbody>
+          </table>
+
+          <h4>Corpo da requisição</h4>
+          <table>
+            <thead><tr><th>Campo</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><code>identifier</code></td><td><code>string</code></td><td>Sim</td><td>Identificador da janela que deve ter o timer resetado</td></tr>
+            </tbody>
+          </table>
+
+          <h4>Exemplo com curl</h4>
+          <pre><span class="cm"># curl</span>
+curl -X POST ${baseUrl}/api/reset-timer/SEU-BUFFER-ID \\
+  -H "<span class="str">Content-Type: application/json</span>" \\
+  -H "<span class="str">X-Api-Key: SUA-API-KEY</span>" \\
+  -d '{
+    "<span class="hl">identifier</span>": "<span class="str">sessao-usuario-123</span>"
+  }'</pre>
+
+          <h4>Resposta (200) — Janela encontrada e resetada</h4>
+          <pre>{
+  "success": true,
+  "reset": true,
+  "message": "Window timer reset successfully",
+  "expires_at": "2026-05-12T23:37:06.630Z"
+}</pre>
+
+          <h4>Resposta (200) — Nenhuma janela aberta encontrada</h4>
+          <pre>{
+  "success": true,
+  "reset": false,
+  "message": "No open window found for this identifier",
+  "expires_at": null
+}</pre>
+
+          <h4>Respostas de erro</h4>
+          <table>
+            <thead><tr><th>Código</th><th>Significado</th></tr></thead>
+            <tbody>
+              <tr><td><strong>400</strong></td><td>Campo <code>identifier</code> ausente</td></tr>
+              <tr><td><strong>401</strong></td><td>Header <code>X-Api-Key</code> ausente</td></tr>
+              <tr><td><strong>404</strong></td><td>Buffer não encontrado ou API Key inválida</td></tr>
             </tbody>
           </table>
         </div>

@@ -113,6 +113,51 @@ export function createApiRoutes(
         throw err;
       }
     });
+
+    router.post('/reset-timer/:bufferId', async (req: Request, res: Response) => {
+      try {
+        const apiKey = req.headers['x-api-key'] as string;
+        if (!apiKey) {
+          res.status(401).json({ error: 'Missing X-Api-Key header' });
+          return;
+        }
+
+        const buffer = await bufferRepo.findById(req.params.bufferId);
+        if (!buffer || buffer.api_key !== apiKey) {
+          res.status(404).json({ error: 'Buffer not found or invalid API key' });
+          return;
+        }
+
+        const { identifier } = req.body;
+        if (!identifier) {
+          res.status(400).json({ error: 'Missing required field: identifier' });
+          return;
+        }
+
+        const openWindow = await windowRepo.findOpenByIdentifier(buffer.id, identifier);
+        
+        if (openWindow) {
+          await windowManager.resetWindow(buffer, openWindow.id, identifier);
+          const updatedWindow = await windowRepo.findById(openWindow.id);
+          
+          res.json({
+            success: true,
+            reset: true,
+            message: 'Window timer reset successfully',
+            expires_at: updatedWindow?.expires_at
+          });
+        } else {
+          res.json({
+            success: true,
+            reset: false,
+            message: 'No open window found for this identifier',
+            expires_at: null
+          });
+        }
+      } catch (err) {
+        throw err;
+      }
+    });
   }
 
   return router;

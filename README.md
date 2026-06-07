@@ -414,6 +414,65 @@ curl -X POST http://localhost:3000/api/confirm/ID-DA-JANELA \
 
 ---
 
+### Resetar Timer
+
+Reinicia o cronômetro de uma janela aberta para um determinado identificador. O tempo voltará a contar do zero a partir do momento da requisição, assumindo a duração total (`window_time`) configurada no buffer. Se não houver nenhuma janela aberta para o identificador fornecido, a API retornará sucesso informando que nenhuma janela foi resetada.
+
+```
+POST /api/reset-timer/:bufferId
+```
+
+| Header | Obrigatório | Descrição |
+|--------|-------------|-----------|
+| `X-Api-Key` | Sim | Chave de API do buffer |
+| `Content-Type` | Sim | `application/json` |
+
+**Corpo da Requisição**
+
+```json
+{
+  "identifier": "sessao-usuario-123"
+}
+```
+
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|-------------|-----------|
+| `identifier` | `string` | Sim | Identificador da janela que deve ter o timer resetado |
+
+**Exemplo com curl:**
+
+```bash
+curl -X POST http://localhost:3000/api/reset-timer/SEU-BUFFER-ID \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: SUA-API-KEY" \
+  -d '{
+    "identifier": "sessao-usuario-123"
+  }'
+```
+
+**Resposta (200) - Janela encontrada:**
+
+```json
+{
+  "success": true,
+  "reset": true,
+  "message": "Window timer reset successfully",
+  "expires_at": "2026-05-12T23:37:06.630Z"
+}
+```
+
+**Resposta (200) - Nenhuma janela aberta:**
+
+```json
+{
+  "success": true,
+  "reset": false,
+  "message": "No open window found for this identifier",
+  "expires_at": null
+}
+```
+
+---
 ## ✅ Respostas da API
 
 ### Códigos HTTP
