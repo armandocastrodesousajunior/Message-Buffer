@@ -246,6 +246,24 @@ export class WindowManagerService {
     }
     this.consumptionTimers.clear();
   }
+
+  clearTimersForBuffer(bufferId: string): void {
+    const prefix = `${bufferId}:`;
+    const cPrefix = `cons:${bufferId}:`;
+
+    for (const [key, active] of this.activeTimers) {
+      if (key.startsWith(prefix)) {
+        clearTimeout(active.timer);
+        this.activeTimers.delete(key);
+      }
+    }
+    for (const [key, timer] of this.consumptionTimers) {
+      if (key.startsWith(cPrefix)) {
+        clearTimeout(timer);
+        this.consumptionTimers.delete(key);
+      }
+    }
+  }
 }
 
 function parseContent(content: string, type: string): unknown {

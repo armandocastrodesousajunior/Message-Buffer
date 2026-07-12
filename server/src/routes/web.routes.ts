@@ -139,6 +139,14 @@ export function createWebRoutes(
       const waitingMessages = await waitingRepo.countByBuffer(req.params.id);
       res.json({ openWindows, waitingMessages });
     });
+    
+    router.post('/buffers/:id/reset', async (req: Request, res: Response) => {
+      if (windowManager) {
+        windowManager.clearTimersForBuffer(req.params.id);
+      }
+      await bufferService.clearBufferData(req.params.id);
+      res.json({ success: true });
+    });
   }
 
   return router;

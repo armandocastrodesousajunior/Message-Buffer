@@ -31,4 +31,13 @@ export class BufferService {
   async delete(id: string): Promise<boolean> {
     return this.bufferRepo.delete(id);
   }
+
+  async clearBufferData(id: string): Promise<boolean> {
+    const db = (await import('../database/connection.js')).getDatabase();
+    await db('logs').where({ buffer_id: id }).delete();
+    await db('waiting_messages').where({ buffer_id: id }).delete();
+    await db('messages').where({ buffer_id: id }).delete();
+    await db('windows').where({ buffer_id: id }).delete();
+    return true;
+  }
 }

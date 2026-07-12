@@ -17,6 +17,8 @@ export function BufferDetail() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
   const [confirmingId, setConfirmingId] = useState('');
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const fetchData = useCallback(async (bufferId: string, isInitial: boolean, currentPage: number) => {
@@ -70,6 +72,21 @@ export function BufferDetail() {
     }
   };
 
+  const handleReset = async () => {
+    if (!buffer) return;
+    setResetting(true);
+    try {
+      await api.buffers.resetData(buffer.id);
+      setPage(1);
+      await fetchData(buffer.id, true, 1);
+      setShowResetModal(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao resetar buffer');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   if (loading) return <div className="loading">Carregando...</div>;
   if (error) return <div className="alert alert-error">{error}</div>;
   if (!buffer) return <div className="alert alert-error">Buffer não encontrado</div>;
@@ -87,12 +104,21 @@ export function BufferDetail() {
           </button>
           <h2>{buffer.name}</h2>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => navigate(`/buffers/${buffer.id}/edit`)}
-        >
-          Editar
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="btn"
+            style={{ background: '#ef4444', color: '#fff', border: 'none' }}
+            onClick={() => setShowResetModal(true)}
+          >
+            Limpar Buffer
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => navigate(`/buffers/${buffer.id}/edit`)}
+          >
+            Editar
+          </button>
+        </div>
       </div>
 
       <div className="detail-card">
@@ -289,6 +315,37 @@ export function BufferDetail() {
           </div>
         )}
       </div>
+
+      {showResetModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h3>⚠️ Limpar Dados do Buffer</h3>
+            <p>
+              Você está prestes a apagar <strong>todos</strong> os logs de processamento, janelas abertas e mensagens na fila deste buffer.
+            </p>
+            <p className="text-muted" style={{ marginBottom: 24 }}>
+              Esta ação é irreversível e as integrações não processadas serão perdidas. Deseja continuar?
+            </p>
+            <div className="form-actions">
+              <button 
+                className="btn btn-ghost" 
+                onClick={() => setShowResetModal(false)}
+                disabled={resetting}
+              >
+                Cancelar
+              </button>
+              <button 
+                className="btn" 
+                style={{ background: '#ef4444', color: '#fff', border: 'none' }}
+                onClick={handleReset}
+                disabled={resetting}
+              >
+                {resetting ? 'Limpando...' : 'Sim, Limpar Tudo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

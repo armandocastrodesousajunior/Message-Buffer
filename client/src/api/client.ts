@@ -129,5 +129,7 @@ export const api = {
       }),
     stats: (id: string) =>
       request<{ openWindows: number; waitingMessages: number }>(`/buffers/${id}/stats`),
+    resetData: (id: string) =>
+      request<void>(`/buffers/${id}/reset`, { method: 'POST' }),
   },
 };
