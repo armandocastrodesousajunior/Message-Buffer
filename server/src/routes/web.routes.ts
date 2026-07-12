@@ -3,12 +3,14 @@ import { BufferService } from '../services/buffer.service.js';
 import { WindowRepository } from '../repositories/window.repo.js';
 import { WindowManagerService } from '../services/window-manager.service.js';
 import { LogRepository } from '../repositories/log.repo.js';
+import { WaitingRepository } from '../repositories/waiting.repo.js';
 
 export function createWebRoutes(
   bufferService: BufferService,
   logRepo: LogRepository,
   windowRepo?: WindowRepository,
-  windowManager?: WindowManagerService
+  windowManager?: WindowManagerService,
+  waitingRepo?: WaitingRepository
 ): Router {
   const router = Router();
 
@@ -98,8 +100,10 @@ export function createWebRoutes(
   });
 
   router.get('/buffers/:id/logs', async (req: Request, res: Response) => {
-    const logs = await logRepo.findByBufferId(req.params.id);
-    res.json(logs);
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 25;
+    const result = await logRepo.findByBufferIdPaginated(req.params.id, page, limit);
+    res.json(result);
   });
 
   if (windowRepo) {
@@ -126,6 +130,14 @@ export function createWebRoutes(
       }
       await windowManager.confirmConsumption(window.buffer_id, window.identifier, window.id);
       res.json({ status: 'consumed' });
+    });
+  }
+
+  if (windowRepo && waitingRepo) {
+    router.get('/buffers/:id/stats', async (req: Request, res: Response) => {
+      const openWindows = await windowRepo.countAllOpenByBuffer(req.params.id);
+      const waitingMessages = await waitingRepo.countByBuffer(req.params.id);
+      res.json({ openWindows, waitingMessages });
     });
   }
 

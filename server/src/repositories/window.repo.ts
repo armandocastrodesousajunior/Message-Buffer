@@ -29,6 +29,15 @@ export class WindowRepository {
       .whereIn('status', ['open', 'processing']);
   }
 
+  async countAllOpenByBuffer(bufferId: string): Promise<number> {
+    const result = await getDatabase()('windows')
+      .where({ buffer_id: bufferId })
+      .whereIn('status', ['open', 'processing'])
+      .count('* as count')
+      .first();
+    return Number(result?.count || 0);
+  }
+
   async findAllOpenExpired(): Promise<WindowRecord[]> {
     return getDatabase()('windows')
       .where({ status: 'open' })

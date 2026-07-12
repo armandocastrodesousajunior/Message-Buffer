@@ -30,4 +30,30 @@ export class LogRepository {
       .where({ buffer_id: bufferId })
       .orderBy('created_at', 'desc');
   }
+
+  async findByBufferIdPaginated(bufferId: string, page: number, limit: number) {
+    const db = getDatabase();
+    
+    const countResult = await db('logs')
+      .where({ buffer_id: bufferId })
+      .count('id as total')
+      .first();
+      
+    const total = Number(countResult?.total || 0);
+    const totalPages = Math.ceil(total / limit) || 1;
+    const offset = (page - 1) * limit;
+
+    const data = await db('logs')
+      .where({ buffer_id: bufferId })
+      .orderBy('created_at', 'desc')
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data,
+      total,
+      page,
+      totalPages,
+    };
+  }
 }

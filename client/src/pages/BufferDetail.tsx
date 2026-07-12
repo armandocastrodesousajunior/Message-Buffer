@@ -8,24 +8,32 @@ export function BufferDetail() {
 
   const [buffer, setBuffer] = useState<BufferData | null>(null);
   const [logs, setLogs] = useState<LogData[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalLogs, setTotalLogs] = useState(0);
   const [windows, setWindows] = useState<WindowData[]>([]);
+  const [stats, setStats] = useState({ openWindows: 0, waitingMessages: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
   const [confirmingId, setConfirmingId] = useState('');
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  const fetchData = useCallback(async (bufferId: string, isInitial: boolean) => {
+  const fetchData = useCallback(async (bufferId: string, isInitial: boolean, currentPage: number) => {
     if (isInitial) setLoading(true);
     try {
-      const [buf, logData, winData] = await Promise.all([
+      const [buf, logResp, winData, statsData] = await Promise.all([
         api.buffers.get(bufferId),
-        api.buffers.logs(bufferId),
+        api.buffers.logs(bufferId, currentPage, 25),
         api.buffers.windows(bufferId, 'closed').catch(() => [] as WindowData[]),
+        api.buffers.stats(bufferId).catch(() => ({ openWindows: 0, waitingMessages: 0 })),
       ]);
       setBuffer(buf);
-      setLogs(logData);
+      setLogs(logResp.data);
+      setTotalPages(logResp.totalPages);
+      setTotalLogs(logResp.total);
       setWindows(winData);
+      setStats(statsData);
       const now = new Date();
       setLastUpdate(now);
     } catch (err) {
@@ -37,10 +45,10 @@ export function BufferDetail() {
 
   useEffect(() => {
     if (!id) return;
-    fetchData(id, true);
-    const interval = setInterval(() => fetchData(id, false), 5000);
+    fetchData(id, true, page);
+    const interval = setInterval(() => fetchData(id, false, page), 5000);
     return () => clearInterval(interval);
-  }, [id, fetchData]);
+  }, [id, fetchData, page]);
 
   const copyToClipboard = useCallback((text: string, field: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -140,6 +148,29 @@ export function BufferDetail() {
       </div>
 
       <div className="detail-card">
+        <div className="logs-header">
+          <h3>Monitoramento em Tempo Real</h3>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lastUpdateText}</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginTop: '16px' }}>
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+            <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--primary)' }}>{stats.openWindows}</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Janelas Abertas</div>
+          </div>
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+            <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#d97706' }}>{stats.waitingMessages}</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Mensagens na Fila</div>
+          </div>
+          {!!buffer.require_consumption && (
+            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444' }}>{windows.length}</div>
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Aguardando Consumo</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="detail-card">
         <h3>Endpoint de Ingestão</h3>
         <div className="endpoint-box" style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
           <code style={{flex:1}}>POST {window.location.origin}/api/ingest/{buffer.id}</code>
@@ -233,6 +264,28 @@ export function BufferDetail() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="pagination" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '24px' }}>
+            <button 
+              className="btn btn-sm btn-ghost" 
+              disabled={page <= 1} 
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+            >
+              Anterior
+            </button>
+            <span className="text-muted" style={{ fontSize: '0.875rem' }}>
+              Página {page} de {totalPages} ({totalLogs} logs)
+            </span>
+            <button 
+              className="btn btn-sm btn-ghost" 
+              disabled={page >= totalPages} 
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            >
+              Próximo
+            </button>
           </div>
         )}
       </div>

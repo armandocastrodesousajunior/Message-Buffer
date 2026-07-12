@@ -97,6 +97,13 @@ export interface LogData {
   created_at: string;
 }
 
+export interface PaginatedLogsResponse {
+  data: LogData[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
 export const api = {
   buffers: {
     list: () => request<BufferData[]>('/buffers'),
@@ -113,12 +120,14 @@ export const api = {
       }),
     delete: (id: string) =>
       request<void>(`/buffers/${id}`, { method: 'DELETE' }),
-    logs: (id: string) => request<LogData[]>(`/buffers/${id}/logs`),
+    logs: (id: string, page = 1, limit = 25) => request<PaginatedLogsResponse>(`/buffers/${id}/logs?page=${page}&limit=${limit}`),
     windows: (id: string, status?: string) =>
       request<WindowData[]>(`/buffers/${id}/windows${status ? `?status=${status}` : ''}`),
     confirmWindow: (bufferId: string, windowId: string) =>
       request<{ status: string }>(`/buffers/${bufferId}/windows/${windowId}/confirm`, {
         method: 'POST',
       }),
+    stats: (id: string) =>
+      request<{ openWindows: number; waitingMessages: number }>(`/buffers/${id}/stats`),
   },
 };

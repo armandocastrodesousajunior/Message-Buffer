@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   app.use('/api', createApiRoutes(ingestionService, windowRepo, bufferRepo, windowManager));
 
   // API administrativa (protegida por Bearer token)
-  app.use('/api/web', authMiddleware, createWebRoutes(bufferService, logRepo, windowRepo, windowManager));
+  app.use('/api/web', authMiddleware, createWebRoutes(bufferService, logRepo, windowRepo, windowManager, waitingRepo));
 
   // Documentação da API
   app.use('/docs', createDocsRoutes());
