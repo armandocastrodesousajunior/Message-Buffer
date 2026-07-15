@@ -35,6 +35,7 @@ export class IngestionService {
     const openWindow = await this.windowRepo.findOpenByIdentifier(bufferId, request.identifier);
 
     if (openWindow) {
+      await this.windowManager.resetWindow(buffer, openWindow.id, request.identifier);
       await this.messageRepo.create(
         openWindow.id,
         bufferId,
@@ -42,7 +43,6 @@ export class IngestionService {
         request.content,
         request.type
       );
-      await this.windowManager.resetWindow(buffer, openWindow.id, request.identifier);
       return { accepted: true, window_id: openWindow.id, queued: false, blocked };
     }
 
@@ -57,6 +57,8 @@ export class IngestionService {
       }
 
       const window = await this.windowRepo.create(bufferId, request.identifier, buffer.window_time);
+      await this.windowManager.startWindow(buffer, window.id, request.identifier);
+      
       await this.messageRepo.create(
         window.id,
         bufferId,
@@ -65,7 +67,6 @@ export class IngestionService {
         request.type
       );
 
-      await this.windowManager.startWindow(buffer, window.id, request.identifier);
       return { accepted: true, window_id: window.id, queued: false, blocked };
     }
 

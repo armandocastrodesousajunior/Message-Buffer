@@ -13,11 +13,14 @@ RUN npm run install:all
 # Copia o restante do código
 COPY . .
 
-# Build do frontend React
-RUN npm run build:client
+# Build do frontend React e do servidor backend
+RUN npm run build
+
+# Limpeza das dependências de dev (opcional, para reduzir tamanho)
+# RUN cd server && npm prune --production && cd ../client && npm prune --production
 
 # Porta do servidor
 EXPOSE 3000
 
-# Inicia o servidor com tsx (TypeScript direto)
-CMD ["npx", "tsx", "server/src/index.ts"]
+# Inicia o servidor rodando a versão compilada (Javascript) em vez do TSX
+CMD ["npm", "start"]

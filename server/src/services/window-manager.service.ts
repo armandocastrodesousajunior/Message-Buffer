@@ -28,23 +28,27 @@ export class WindowManagerService {
     identifier: string
   ): Promise<void> {
     const timerKey = this.timerKey(buffer.id, identifier);
+    const newDelay = buffer.window_time * 1000;
 
     const existing = this.activeTimers.get(timerKey);
     if (existing) {
       clearTimeout(existing.timer);
-      this.activeTimers.delete(timerKey);
     }
-
-    const expiresAt = new Date(Date.now() + buffer.window_time * 1000).toISOString();
-    await this.windowRepo.updateExpiresAt(windowId, expiresAt);
 
     const timer = setTimeout(
       () => this.expireWindow(buffer, windowId, identifier),
-      buffer.window_time * 1000
+      newDelay
     );
     timer.unref();
 
     this.activeTimers.set(timerKey, { timer, windowId });
+
+    const expiresAt = new Date(Date.now() + newDelay).toISOString();
+    try {
+      await this.windowRepo.updateExpiresAt(windowId, expiresAt);
+    } catch (err) {
+      console.error(`[resetWindow] Falha ao atualizar expires_at no banco para a janela ${windowId}:`, err);
+    }
   }
 
   async startWindow(
@@ -87,6 +91,8 @@ export class WindowManagerService {
       for (const window of openWindows) {
         if (window.status === 'open') {
           await this.startWindow(buffer, window.id, window.identifier);
+        } else if (window.status === 'processing') {
+          await this.expireWindow(buffer, window.id, window.identifier);
         }
       }
     }
@@ -100,12 +106,20 @@ export class WindowManagerService {
     const timerKey = this.timerKey(buffer.id, identifier);
 
     const existing = this.activeTimers.get(timerKey);
-    if (existing) {
+    if (existing && existing.windowId === windowId) {
       clearTimeout(existing.timer);
       this.activeTimers.delete(timerKey);
     }
 
-    await this.windowRepo.updateStatus(windowId, 'processing');
+    try {
+      await this.windowRepo.updateStatus(windowId, 'processing');
+    } catch (err) {
+      console.error(`[expireWindow] Falha ao atualizar status para processing na janela ${windowId}:`, err);
+      const retryTimer = setTimeout(() => this.expireWindow(buffer, windowId, identifier), 5000);
+      retryTimer.unref();
+      this.activeTimers.set(timerKey, { timer: retryTimer, windowId });
+      return;
+    }
 
     const messages = await this.messageRepo.findByWindowId(windowId);
 
@@ -199,22 +213,22 @@ export class WindowManagerService {
       );
 
       if (existingWindow) {
+        await this.resetWindow(buffer, existingWindow.id, next.identifier);
         for (const msg of batch) {
           await this.messageRepo.create(
             existingWindow.id, buffer.id, msg.identifier, msg.content, msg.type
-          );
+          ).catch(e => console.error(e));
         }
-        await this.resetWindow(buffer, existingWindow.id, next.identifier);
       } else {
         const window = await this.windowRepo.create(
           buffer.id, next.identifier, buffer.window_time
         );
+        await this.startWindow(buffer, window.id, next.identifier);
         for (const msg of batch) {
           await this.messageRepo.create(
             window.id, buffer.id, msg.identifier, msg.content, msg.type
-          );
+          ).catch(e => console.error(e));
         }
-        await this.startWindow(buffer, window.id, next.identifier);
       }
     }
   }
