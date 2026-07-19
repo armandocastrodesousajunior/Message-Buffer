@@ -143,7 +143,7 @@ export function createWebRoutes(
 
   if (windowRepo && waitingRepo) {
     router.get('/buffers/:id/stats', async (req: Request, res: Response) => {
-      const openWindows = await windowRepo.countAllOpenByBuffer(req.params.id);
+      const openWindows = await bufferService.getOpenWindowCount(req.params.id);
       const waitingMessages = await waitingRepo.countByBuffer(req.params.id);
       res.json({ openWindows, waitingMessages });
     });
@@ -161,6 +161,12 @@ export function createWebRoutes(
         windowManager.clearTimersForBuffer(req.params.id);
       }
       await bufferService.clearOpenWindows(req.params.id);
+      
+      const buffer = await bufferService.getById(req.params.id);
+      if (buffer && windowManager) {
+        await windowManager.processQueue(buffer);
+      }
+      
       res.json({ success: true });
     });
 
@@ -174,6 +180,12 @@ export function createWebRoutes(
         windowManager.clearTimersForBuffer(req.params.id);
       }
       await bufferService.clearWindowsAwaitingConsumption(req.params.id);
+      
+      const buffer = await bufferService.getById(req.params.id);
+      if (buffer && windowManager) {
+        await windowManager.processQueue(buffer);
+      }
+
       res.json({ success: true });
     });
   }

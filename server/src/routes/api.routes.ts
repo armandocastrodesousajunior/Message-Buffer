@@ -134,11 +134,13 @@ export function createApiRoutes(
           return;
         }
 
-        const openWindow = await windowRepo.findOpenByIdentifier(buffer.id, identifier);
+        const { RedisService } = await import('../services/redis.service.js');
+        const redisService = new RedisService();
+        const openWindowId = await redisService.getOpenWindowId(buffer.id, identifier);
         
-        if (openWindow) {
-          await windowManager.resetWindow(buffer, openWindow.id, identifier);
-          const updatedWindow = await windowRepo.findById(openWindow.id);
+        if (openWindowId) {
+          await windowManager.resetWindow(buffer, openWindowId, identifier);
+          const updatedWindow = await windowRepo.findById(openWindowId);
           
           res.json({
             success: true,

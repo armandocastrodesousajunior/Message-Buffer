@@ -35,6 +35,7 @@ export async function runMigrations(): Promise<void> {
     '006_add_buffer_advanced_options',
     '007_add_window_consumed',
     '008_add_max_resets',
+    '009_drop_unused_tables',
   ];
 
   const hasTable = await database.schema.hasTable('_migrations');
@@ -74,6 +75,9 @@ export async function runMigrations(): Promise<void> {
         break;
       case '008_add_max_resets':
         await addMaxResets(database);
+        break;
+      case '009_drop_unused_tables':
+        await dropUnusedTables(database);
         break;
     }
 
@@ -165,5 +169,17 @@ async function addMaxResets(database: Knex): Promise<void> {
     await database.schema.alterTable('windows', (table) => {
       table.integer('reset_count').notNullable().defaultTo(0);
     });
+  }
+}
+
+async function dropUnusedTables(database: Knex): Promise<void> {
+  const hasMessages = await database.schema.hasTable('messages');
+  if (hasMessages) {
+    await database.schema.dropTable('messages');
+  }
+
+  const hasWaiting = await database.schema.hasTable('waiting_messages');
+  if (hasWaiting) {
+    await database.schema.dropTable('waiting_messages');
   }
 }

@@ -4,6 +4,7 @@ import { MessageRepository } from '../repositories/message.repo.js';
 import { WaitingRepository } from '../repositories/waiting.repo.js';
 import { WindowManagerService } from './window-manager.service.js';
 import { BufferRecord, IngestRequest } from '../models/types.js';
+import { RedisService } from './redis.service.js';
 
 export interface IngestResult {
   accepted: true;
@@ -14,13 +15,17 @@ export interface IngestResult {
 }
 
 export class IngestionService {
+  private redisService: RedisService;
+
   constructor(
     private bufferRepo: BufferRepository,
     private windowRepo: WindowRepository,
     private messageRepo: MessageRepository,
     private waitingRepo: WaitingRepository,
     private windowManager: WindowManagerService
-  ) {}
+  ) {
+    this.redisService = new RedisService();
+  }
 
   async ingest(bufferId: string, apiKey: string, request: IngestRequest): Promise<IngestResult> {
     const buffer = await this.bufferRepo.findById(bufferId);
@@ -29,39 +34,59 @@ export class IngestionService {
     }
 
     const blocked = buffer.require_consumption
-      ? !!(await this.windowRepo.findBlockedByIdentifier(bufferId, request.identifier))
+      ? await this.redisService.isBlocked(bufferId, request.identifier)
       : false;
 
-    const openWindow = await this.windowRepo.findOpenByIdentifier(bufferId, request.identifier);
+    // Fast Path via Redis Hash
+    const openWindowId = await this.redisService.getOpenWindowId(bufferId, request.identifier);
 
-    if (openWindow) {
-      if (buffer.max_resets === null || openWindow.reset_count < buffer.max_resets) {
-        await this.windowManager.resetWindow(buffer, openWindow.id, request.identifier);
-        await this.windowRepo.incrementResetCount(openWindow.id);
+    if (openWindowId) {
+      const canReset = await this.redisService.incrementAndCheckResets(bufferId, openWindowId, buffer.max_resets);
+      if (canReset) {
+        await this.windowManager.resetWindow(buffer, openWindowId, request.identifier);
       }
+      
       await this.messageRepo.create(
-        openWindow.id,
+        openWindowId,
         bufferId,
         request.identifier,
         request.content,
         request.type
       );
-      return { accepted: true, window_id: openWindow.id, queued: false, blocked };
+      return { accepted: true, window_id: openWindowId, queued: false, blocked };
     }
 
-    const openCount = await this.bufferRepo.countOpenWindows(bufferId);
+    // New Window Path
     const limit = buffer.max_concurrent_windows;
+    let allowedToOpen = true;
 
-    if (limit === null || openCount < limit) {
+    if (limit !== null) {
+      const newCount = await this.redisService.incrementActiveCount(bufferId);
+      if (newCount > limit) {
+        await this.redisService.decrementActiveCount(bufferId);
+        allowedToOpen = false;
+      }
+    } else {
+      await this.redisService.incrementActiveCount(bufferId); // Se não tem limite, apenas incrementa
+    }
+
+    if (allowedToOpen) {
       if (blocked) {
+        // Estava bloqueado, reverte o contador pois não pode abrir janela real
+        await this.redisService.decrementActiveCount(bufferId);
+        
         await this.waitingRepo.enqueue(bufferId, request.identifier, request.content, request.type);
         const queuePosition = await this.waitingRepo.countByBuffer(bufferId);
         return { accepted: true, window_id: '', queued: true, queue_position: queuePosition, blocked };
       }
 
+      // 1. Persist no Postgres para gerar o histórico e o ID
       const window = await this.windowRepo.create(bufferId, request.identifier, buffer.window_time);
+      
+      // 2. Trava em memória RAM no Redis
       await this.windowManager.startWindow(buffer, window.id, request.identifier);
       
+      // 3. Empilha mensagem na fila efêmera (Redis)
       await this.messageRepo.create(
         window.id,
         bufferId,
@@ -73,6 +98,7 @@ export class IngestionService {
       return { accepted: true, window_id: window.id, queued: false, blocked };
     }
 
+    // Queue limit exceeded
     await this.waitingRepo.enqueue(bufferId, request.identifier, request.content, request.type);
     const queuePosition = await this.waitingRepo.countByBuffer(bufferId);
     return { accepted: true, window_id: '', queued: true, queue_position: queuePosition, blocked };

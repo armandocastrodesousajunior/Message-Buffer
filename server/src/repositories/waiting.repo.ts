@@ -1,8 +1,12 @@
-import { getDatabase } from '../database/connection.js';
 import { WaitingMessageRecord } from '../models/types.js';
 import { v4 as uuid } from 'uuid';
+import { getRedis } from '../database/redis.js';
+import { RedisService } from '../services/redis.service.js';
 
 export class WaitingRepository {
+  private getIdentifiersKey(bufferId: string) { return `buffer:${bufferId}:waiting_identifiers`; }
+  private getMessagesKey(bufferId: string, identifier: string) { return `buffer:${bufferId}:waiting:${identifier}`; }
+
   async enqueue(
     bufferId: string,
     identifier: string,
@@ -13,63 +17,69 @@ export class WaitingRepository {
       id: uuid(),
       buffer_id: bufferId,
       identifier,
-      content: typeof content === 'string' ? content : JSON.stringify(content),
+      content: JSON.stringify(content),
       type,
       received_at: new Date().toISOString(),
     };
-    await getDatabase()('waiting_messages').insert(record);
+    
+    const redis = getRedis();
+    const len = await redis.rpush(this.getMessagesKey(bufferId, identifier), JSON.stringify(record));
+    
+    // Se é a primeira mensagem desse identificador, adicionamos ele na fila de espera global do buffer
+    if (len === 1) {
+      await redis.rpush(this.getIdentifiersKey(bufferId), identifier);
+    }
+    
     return record;
   }
 
-  async dequeue(bufferId: string): Promise<WaitingMessageRecord | undefined> {
-    const item = await getDatabase()('waiting_messages')
-      .where({ buffer_id: bufferId })
-      .orderBy('received_at', 'asc')
-      .first();
-    if (item) {
-      await getDatabase()('waiting_messages').where({ id: item.id }).delete();
-    }
-    return item;
-  }
-
   async countByBuffer(bufferId: string): Promise<number> {
-    const result = await getDatabase()('waiting_messages')
-      .where({ buffer_id: bufferId })
-      .count('* as count')
-      .first();
-    return Number(result?.count || 0);
+    const redis = getRedis();
+    const identifiers = await redis.lrange(this.getIdentifiersKey(bufferId), 0, -1);
+    let total = 0;
+    for (const id of identifiers) {
+      total += await redis.llen(this.getMessagesKey(bufferId, id));
+    }
+    return total;
   }
 
-  async findNextByBuffer(bufferId: string): Promise<WaitingMessageRecord | undefined> {
-    return getDatabase()('waiting_messages')
-      .where({ buffer_id: bufferId })
-      .orderBy('received_at', 'asc')
-      .first();
-  }
-
-  async findNextUnlocked(bufferId: string): Promise<WaitingMessageRecord | undefined> {
-    return getDatabase()('waiting_messages as wm')
-      .where({ 'wm.buffer_id': bufferId })
-      .whereNotExists(function() {
-        this.select('*')
-          .from('windows as w')
-          .whereRaw('w.identifier = wm.identifier')
-          .where({ 'w.buffer_id': bufferId })
-          .whereIn('w.status', ['closed', 'processing']);
-      })
-      .orderBy('wm.received_at', 'asc')
-      .first();
+  async popNextUnlockedIdentifier(bufferId: string, redisService: RedisService): Promise<string | null> {
+    const redis = getRedis();
+    const identifiers = await redis.lrange(this.getIdentifiersKey(bufferId), 0, -1);
+    
+    for (const id of identifiers) {
+      const blocked = await redisService.isBlocked(bufferId, id);
+      if (!blocked) {
+        await redis.lrem(this.getIdentifiersKey(bufferId), 1, id);
+        return id;
+      }
+    }
+    return null;
   }
 
   async dequeueByIdentifier(bufferId: string, identifier: string): Promise<WaitingMessageRecord[]> {
-    const items = await getDatabase()('waiting_messages')
-      .where({ buffer_id: bufferId, identifier })
-      .orderBy('received_at', 'asc');
+    const redis = getRedis();
+    const key = this.getMessagesKey(bufferId, identifier);
+    const msgsStr = await redis.lrange(key, 0, -1);
+    await redis.del(key);
+    
+    return msgsStr.map(str => {
+      const parsed = JSON.parse(str);
+      return {
+        ...parsed,
+        identifier // garantir que o objeto de retorno tem o identificador
+      };
+    });
+  }
 
-    if (items.length > 0) {
-      const ids = items.map(i => i.id);
-      await getDatabase()('waiting_messages').whereIn('id', ids).delete();
+  async clearBuffer(bufferId: string): Promise<void> {
+    const redis = getRedis();
+    const identifiers = await redis.lrange(this.getIdentifiersKey(bufferId), 0, -1);
+    const pipeline = redis.pipeline();
+    pipeline.del(this.getIdentifiersKey(bufferId));
+    for (const id of identifiers) {
+      pipeline.del(this.getMessagesKey(bufferId, id));
     }
-    return items;
+    await pipeline.exec();
   }
 }

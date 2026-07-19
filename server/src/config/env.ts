@@ -14,4 +14,5 @@ export const env = {
     const match = this.databaseUrl.match(/sqlite:\/\/(.+)/);
     return match ? match[1] : './data/message-buffer.db';
   },
+  redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
 };

@@ -4,16 +4,11 @@ import { MessageRepository } from '../repositories/message.repo.js';
 import { WaitingRepository } from '../repositories/waiting.repo.js';
 import { WebhookService } from './webhook.service.js';
 import { BufferRecord, WebhookPayload } from '../models/types.js';
-
-interface ActiveWindow {
-  timer: ReturnType<typeof setTimeout>;
-  windowId: string;
-}
+import { RedisService } from './redis.service.js';
 
 export class WindowManagerService {
-  private activeTimers = new Map<string, ActiveWindow>();
-  private consumptionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private sweeperInterval: ReturnType<typeof setInterval>;
+  private redisService: RedisService;
 
   constructor(
     private bufferRepo: BufferRepository,
@@ -22,26 +17,37 @@ export class WindowManagerService {
     private waitingRepo: WaitingRepository,
     private webhookService: WebhookService
   ) {
-    this.sweeperInterval = setInterval(() => this.sweepExpiredWindows(), 5000);
+    this.redisService = new RedisService();
+    this.sweeperInterval = setInterval(() => this.sweepExpiredWindows(), 1000); // Varre 1x por segundo
   }
 
   private async sweepExpiredWindows(): Promise<void> {
     try {
-      const openExpired = await this.windowRepo.findAllExpired('open');
-      for (const window of openExpired) {
-        const buffer = await this.bufferRepo.findById(window.buffer_id);
-        if (buffer) {
-          await this.expireWindow(buffer, window.id, window.identifier);
+      const allBuffers = await this.bufferRepo.findAll();
+      const now = Date.now();
+      
+      for (const buffer of allBuffers) {
+        // 1. Janelas Abertas que Expiraram
+        const expiredWindows = await this.redisService.getExpiredWindows(buffer.id, now);
+        for (const windowId of expiredWindows) {
+          // Lock atômico (evita que 2 workers processem a mesma janela)
+          const claimed = await this.redisService.claimTimerLock(buffer.id, windowId);
+          if (claimed) {
+            await this.expireWindow(buffer, windowId);
+          }
         }
-      }
 
-      const closedExpired = await this.windowRepo.findAllExpired('closed');
-      for (const window of closedExpired) {
-        const claimed = await this.windowRepo.claimWindowForExpiration(window.id);
-        if (claimed) {
-          const buffer = await this.bufferRepo.findById(window.buffer_id);
-          if (buffer) {
-            await this.processQueue(buffer);
+        // 2. Janelas Fechadas que excederam o Tempo de Consumo
+        const expiredConsumptions = await this.redisService.getExpiredConsumptionWindows(buffer.id, now);
+        for (const windowId of expiredConsumptions) {
+          const claimed = await this.redisService.claimConsumptionLock(buffer.id, windowId);
+          if (claimed) {
+            await this.windowRepo.updateStatus(windowId, 'expired');
+            const win = await this.windowRepo.findById(windowId);
+            if (win) {
+              await this.redisService.expireConsumptionTimeout(buffer.id, win.identifier, windowId);
+              await this.processQueue(buffer);
+            }
           }
         }
       }
@@ -50,116 +56,49 @@ export class WindowManagerService {
     }
   }
 
-  async resetWindow(
-    buffer: BufferRecord,
-    windowId: string,
-    identifier: string
-  ): Promise<void> {
-    const timerKey = this.timerKey(buffer.id, identifier);
+  async resetWindow(buffer: BufferRecord, windowId: string, identifier: string): Promise<void> {
     const newDelay = buffer.window_time * 1000;
-
-    const existing = this.activeTimers.get(timerKey);
-    if (existing) {
-      clearTimeout(existing.timer);
-    }
-
-    const timer = setTimeout(
-      () => this.expireWindow(buffer, windowId, identifier),
-      newDelay
-    );
-    timer.unref();
-
-    this.activeTimers.set(timerKey, { timer, windowId });
-
-    const expiresAt = new Date(Date.now() + newDelay).toISOString();
+    const expiresAt = Date.now() + newDelay;
+    await this.redisService.updateWindowTimer(buffer.id, windowId, expiresAt);
+    
+    // Opcional: atualizar expires_at no Postgres para a UI refletir
     try {
-      await this.windowRepo.updateExpiresAt(windowId, expiresAt);
-    } catch (err) {
-      console.error(`[resetWindow] Falha ao atualizar expires_at no banco para a janela ${windowId}:`, err);
+      await this.windowRepo.updateExpiresAt(windowId, new Date(expiresAt).toISOString());
+    } catch (e) {
+       // ignora falha em background para update puramente visual
     }
   }
 
-  async startWindow(
-    buffer: BufferRecord,
-    windowId: string,
-    identifier: string
-  ): Promise<void> {
-    const timerKey = this.timerKey(buffer.id, identifier);
-
-    const existing = this.activeTimers.get(timerKey);
-    if (existing) return;
-
-    const remainingMs = buffer.window_time * 1000;
-    if (remainingMs <= 0) {
-      await this.expireWindow(buffer, windowId, identifier);
-      return;
-    }
-
-    const timer = setTimeout(
-      () => this.expireWindow(buffer, windowId, identifier),
-      remainingMs
-    );
-    timer.unref();
-
-    this.activeTimers.set(timerKey, { timer, windowId });
+  async startWindow(buffer: BufferRecord, windowId: string, identifier: string): Promise<void> {
+    const expiresAt = Date.now() + buffer.window_time * 1000;
+    await this.redisService.openWindow(buffer.id, identifier, windowId, expiresAt);
   }
 
   async recoverWindows(): Promise<void> {
-    const expired = await this.windowRepo.findAllExpired('open');
-    for (const window of expired) {
-      const buffer = await this.bufferRepo.findById(window.buffer_id);
-      if (buffer) {
-        await this.expireWindow(buffer, window.id, window.identifier);
-      }
-    }
-
+    // Com o Redis, estados efêmeros já estão em RAM.
+    // Apenas forçamos o processamento de filas represadas para garantir robustez.
     const allBuffers = await this.bufferRepo.findAll();
     for (const buffer of allBuffers) {
-      const openWindows = await this.windowRepo.findAllOpenByBuffer(buffer.id);
-      for (const window of openWindows) {
-        if (window.status === 'open') {
-          await this.startWindow(buffer, window.id, window.identifier);
-        } else if (window.status === 'processing') {
-          await this.expireWindow(buffer, window.id, window.identifier);
-        }
-      }
+       await this.processQueue(buffer);
     }
   }
 
-  async expireWindow(
-    buffer: BufferRecord,
-    windowId: string,
-    identifier: string
-  ): Promise<void> {
-    const timerKey = this.timerKey(buffer.id, identifier);
+  async expireWindow(buffer: BufferRecord, windowId: string): Promise<void> {
+    const win = await this.windowRepo.findById(windowId);
+    if (!win) return; // Janela não encontrada no DB
+    const identifier = win.identifier;
 
-    const existing = this.activeTimers.get(timerKey);
-    if (existing && existing.windowId === windowId) {
-      clearTimeout(existing.timer);
-      this.activeTimers.delete(timerKey);
-    }
+    // Atualiza DB e prepara para webhook
+    await this.windowRepo.updateStatus(windowId, 'processing');
 
-    try {
-      const claimed = await this.windowRepo.claimWindowForProcessing(windowId);
-      if (!claimed) {
-        return; // Outro worker assumiu ou janela já processada
-      }
-    } catch (err) {
-      console.error(`[expireWindow] Falha ao dar claim na janela ${windowId}:`, err);
-      const retryTimer = setTimeout(() => this.expireWindow(buffer, windowId, identifier), 5000);
-      retryTimer.unref();
-      this.activeTimers.set(timerKey, { timer: retryTimer, windowId });
-      return;
-    }
-
-    const messages = await this.messageRepo.findByWindowId(windowId);
-
+    const messages = await this.messageRepo.findByWindow(windowId);
+    
     const payload: WebhookPayload = {
       identifier,
       buffer_id: buffer.id,
       messages: messages.map((m) => ({
         type: m.type,
-        content: parseContent(m.content, m.type),
+        content: parseContent(m.content as string, m.type),
         received_at: m.received_at,
       })),
     };
@@ -167,15 +106,21 @@ export class WindowManagerService {
     const result = await this.webhookService.dispatch(buffer, windowId, identifier, payload);
 
     if (buffer.require_consumption && result.status === 200) {
+      // Configurado sem timeout de consumo e sucesso imediato: Marca como consumido
       await this.windowRepo.updateStatus(windowId, 'consumed');
+      await this.redisService.consumeWindow(buffer.id, identifier, windowId);
+      await this.messageRepo.clearWindow(windowId);
     } else {
-      if (buffer.require_consumption && buffer.consumption_timeout != null) {
-        const consExpiresAt = new Date(Date.now() + buffer.consumption_timeout).toISOString();
-        await this.windowRepo.updateExpiresAt(windowId, consExpiresAt);
+      if (buffer.require_consumption) {
+        // Exige consumo e a resposta não foi 200.
+        // Se consumption_timeout for nulo, ficará bloqueado indefinidamente até confirmação manual.
         await this.windowRepo.updateStatus(windowId, 'closed');
-        this.startConsumptionTimer(buffer, windowId, identifier);
+        await this.redisService.closeWindow(buffer.id, identifier, windowId, buffer.consumption_timeout);
       } else {
+        // Não exige consumo: expira direto
         await this.windowRepo.updateStatus(windowId, 'closed');
+        await this.redisService.expireWindowWithoutConsumption(buffer.id, identifier, windowId);
+        await this.messageRepo.clearWindow(windowId);
       }
     }
 
@@ -183,135 +128,61 @@ export class WindowManagerService {
   }
 
   async confirmConsumption(bufferId: string, identifier: string, windowId: string): Promise<void> {
-    const cKey = this.consTimerKey(bufferId, identifier);
-    const existing = this.consumptionTimers.get(cKey);
-    if (existing) {
-      clearTimeout(existing);
-      this.consumptionTimers.delete(cKey);
-    }
-
+    await this.redisService.claimConsumptionLock(bufferId, windowId); // Limpa o timer caso exista
     await this.windowRepo.updateStatus(windowId, 'consumed');
-
+    await this.redisService.consumeWindow(bufferId, identifier, windowId);
+    await this.messageRepo.clearWindow(windowId);
+    
     const buffer = await this.bufferRepo.findById(bufferId);
     if (buffer) {
       await this.processQueue(buffer);
     }
   }
 
-  private startConsumptionTimer(buffer: BufferRecord, windowId: string, identifier: string): void {
-    const cKey = this.consTimerKey(buffer.id, identifier);
-    const existing = this.consumptionTimers.get(cKey);
-    if (existing) {
-      clearTimeout(existing);
-      this.consumptionTimers.delete(cKey);
-    }
-
-    const timer = setTimeout(async () => {
-      this.consumptionTimers.delete(cKey);
-      await this.windowRepo.updateStatus(windowId, 'expired');
-      await this.processQueue(buffer);
-    }, buffer.consumption_timeout!);
-    timer.unref();
-
-    this.consumptionTimers.set(cKey, timer);
-  }
-
-  private async isIdentifierBlocked(bufferId: string, identifier: string): Promise<boolean> {
-    const blocked = await this.windowRepo.findBlockedByIdentifier(bufferId, identifier);
-    return !!blocked;
-  }
-
-  private async processQueue(buffer: BufferRecord): Promise<void> {
+  async processQueue(buffer: BufferRecord): Promise<void> {
     const limit = buffer.max_concurrent_windows;
 
     while (true) {
-      const timerCount = await this.windowRepo.countAllOpenByBuffer(buffer.id);
-      if (limit !== null && timerCount >= limit) break;
-
-      let next = await this.waitingRepo.findNextByBuffer(buffer.id);
-      if (!next) break;
-
-      if (buffer.require_consumption) {
-        const blocked = await this.isIdentifierBlocked(buffer.id, next.identifier);
-        if (blocked) {
-          next = await this.waitingRepo.findNextUnlocked(buffer.id);
-          if (!next) break;
-        }
-      }
-
-      const batch = await this.waitingRepo.dequeueByIdentifier(buffer.id, next.identifier);
-      if (batch.length === 0) break;
-
-      const existingWindow = await this.windowRepo.findOpenByIdentifier(
-        buffer.id, next.identifier
-      );
-
-      if (existingWindow) {
-        await this.resetWindow(buffer, existingWindow.id, next.identifier);
-        for (const msg of batch) {
-          await this.messageRepo.create(
-            existingWindow.id, buffer.id, msg.identifier, msg.content, msg.type
-          ).catch(e => console.error(e));
-        }
+      if (limit !== null) {
+         const newCount = await this.redisService.incrementActiveCount(buffer.id);
+         if (newCount > limit) {
+             await this.redisService.decrementActiveCount(buffer.id);
+             break; // Bateu no limite global
+         }
       } else {
-        const window = await this.windowRepo.create(
-          buffer.id, next.identifier, buffer.window_time
-        );
-        await this.startWindow(buffer, window.id, next.identifier);
-        for (const msg of batch) {
-          await this.messageRepo.create(
-            window.id, buffer.id, msg.identifier, msg.content, msg.type
-          ).catch(e => console.error(e));
-        }
+         await this.redisService.incrementActiveCount(buffer.id);
+      }
+
+      // Procura o próximo identifier na fila que não esteja bloqueado
+      const nextIdentifier = await this.waitingRepo.popNextUnlockedIdentifier(buffer.id, this.redisService);
+      if (!nextIdentifier) {
+          // Reverte o contador já que não tem nada pra consumir
+          await this.redisService.decrementActiveCount(buffer.id);
+          break; // Sem candidatos elegíveis
+      }
+
+      const batch = await this.waitingRepo.dequeueByIdentifier(buffer.id, nextIdentifier);
+      if (batch.length === 0) {
+          await this.redisService.decrementActiveCount(buffer.id);
+          continue;
+      }
+
+      // Inicia a nova janela para este identifier
+      const window = await this.windowRepo.create(buffer.id, nextIdentifier, buffer.window_time);
+      await this.startWindow(buffer, window.id, nextIdentifier);
+      
+      for (const msg of batch) {
+        await this.messageRepo.create(window.id, buffer.id, msg.identifier, msg.content, msg.type).catch(console.error);
       }
     }
-  }
-
-  private countTimersForBuffer(bufferId: string): number {
-    let count = 0;
-    const prefix = `${bufferId}:`;
-    for (const key of this.activeTimers.keys()) {
-      if (key.startsWith(prefix)) count++;
-    }
-    return count;
-  }
-
-  private timerKey(bufferId: string, identifier: string): string {
-    return `${bufferId}:${identifier}`;
-  }
-
-  private consTimerKey(bufferId: string, identifier: string): string {
-    return `cons:${bufferId}:${identifier}`;
   }
 
   clearAllTimers(): void {
     clearInterval(this.sweeperInterval);
-    for (const [, active] of this.activeTimers) {
-      clearTimeout(active.timer);
-    }
-    this.activeTimers.clear();
-    for (const [, timer] of this.consumptionTimers) {
-      clearTimeout(timer);
-    }
-    this.consumptionTimers.clear();
   }
 
   clearTimersForBuffer(bufferId: string): void {
-    const prefix = `${bufferId}:`;
-    const cPrefix = `cons:${bufferId}:`;
-
-    for (const [key, active] of this.activeTimers) {
-      if (key.startsWith(prefix)) {
-        clearTimeout(active.timer);
-        this.activeTimers.delete(key);
-      }
-    }
-    for (const [key, timer] of this.consumptionTimers) {
-      if (key.startsWith(cPrefix)) {
-        clearTimeout(timer);
-        this.consumptionTimers.delete(key);
-      }
-    }
+    // Delegado ao RedisService
   }
 }
 

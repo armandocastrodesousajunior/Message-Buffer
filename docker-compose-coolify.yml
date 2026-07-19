@@ -1,10 +1,9 @@
 services:
   message-buffer:
-    build: .
+    image: armandocastro/message-buffer:latest
     container_name: message-buffer
-    ports:
-      - "3000:3000"
     environment:
+      - SERVICE_URL_BUFFER_3000
       - PORT=3000
       - ACCESS_TOKEN=meu-token-super-seguro
       - DATABASE_URL=postgres://message_buffer:message_buffer@db:5432/message_buffer
