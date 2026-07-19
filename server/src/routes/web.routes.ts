@@ -4,6 +4,8 @@ import { WindowRepository } from '../repositories/window.repo.js';
 import { WindowManagerService } from '../services/window-manager.service.js';
 import { LogRepository } from '../repositories/log.repo.js';
 import { WaitingRepository } from '../repositories/waiting.repo.js';
+import { RedisService } from '../services/redis.service.js';
+import { MessageRepository } from '../repositories/message.repo.js';
 
 export function createWebRoutes(
   bufferService: BufferService,
@@ -13,6 +15,8 @@ export function createWebRoutes(
   waitingRepo?: WaitingRepository
 ): Router {
   const router = Router();
+  const redisService = new RedisService();
+  const messageRepo = new MessageRepository();
 
   router.get('/buffers', async (_req: Request, res: Response) => {
     const buffers = await bufferService.list();
@@ -125,19 +129,42 @@ export function createWebRoutes(
     });
   }
 
-  if (windowRepo && windowManager) {
-    router.post('/buffers/:bufferId/windows/:windowId/confirm', async (req: Request, res: Response) => {
-      const window = await windowRepo.findById(req.params.windowId);
-      if (!window) {
-        res.status(404).json({ error: 'Window not found' });
-        return;
+  if (windowRepo && windowManager && redisService && messageRepo) {
+    router.post('/buffers/:id/windows/:windowId/confirm', async (req: Request, res: Response) => {
+      try {
+        const buffer = await bufferService.getById(req.params.id);
+        if (!buffer) {
+          return res.status(404).json({ error: 'Buffer not found' });
+        }
+        
+        // Pega a janela ANTES de dar o update
+        const win = await windowRepo.findById(req.params.windowId);
+        if (!win) {
+          return res.status(404).json({ error: 'Window not found' });
+        }
+        
+        // Se já foi consumida por duplo-clique ou pelo sweeper, ignora
+        if (win.status === 'consumed') {
+          return res.json({ success: true, ignored: true });
+        }
+
+        // Tenta remover do bloqueio no redis como forma de lock (se retornar 0, outro confirm já processou)
+        const removed = await redisService.claimConsumptionLock(buffer.id, win.id);
+        if (!removed) {
+           return res.json({ success: true, ignored: true });
+        }
+        
+        await windowRepo.updateStatus(req.params.windowId, 'consumed');
+        await redisService.consumeWindow(buffer.id, win.identifier, win.id);
+        await messageRepo.clearWindow(win.id);
+        
+        // Tenta puxar a fila
+        await windowManager.processQueue(buffer);
+        
+        res.json({ success: true });
+      } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
       }
-      if (window.status !== 'closed') {
-        res.status(400).json({ error: `Window status is '${window.status}', expected 'closed'` });
-        return;
-      }
-      await windowManager.confirmConsumption(window.buffer_id, window.identifier, window.id);
-      res.json({ status: 'consumed' });
     });
   }
 

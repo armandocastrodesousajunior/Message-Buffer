@@ -17,7 +17,7 @@ export class WaitingRepository {
       id: uuid(),
       buffer_id: bufferId,
       identifier,
-      content: JSON.stringify(content),
+      content: typeof content === 'string' ? content : JSON.stringify(content),
       type,
       received_at: new Date().toISOString(),
     };
@@ -60,14 +60,23 @@ export class WaitingRepository {
   async dequeueByIdentifier(bufferId: string, identifier: string): Promise<WaitingMessageRecord[]> {
     const redis = getRedis();
     const key = this.getMessagesKey(bufferId, identifier);
-    const msgsStr = await redis.lrange(key, 0, -1);
-    await redis.del(key);
+    const tempKey = `${key}:temp:${uuid()}`;
+    
+    // Verifica se a chave existe antes de renomear para evitar erro
+    const exists = await redis.exists(key);
+    if (!exists) return [];
+    
+    // Renomeia a chave atomicamente, assim novas mensagens vão para a chave original
+    await redis.rename(key, tempKey);
+    
+    const msgsStr = await redis.lrange(tempKey, 0, -1);
+    await redis.del(tempKey);
     
     return msgsStr.map(str => {
       const parsed = JSON.parse(str);
       return {
         ...parsed,
-        identifier // garantir que o objeto de retorno tem o identificador
+        identifier
       };
     });
   }

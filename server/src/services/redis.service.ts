@@ -58,6 +58,18 @@ export class RedisService {
     return getRedis().hlen(this.getOpenWindowsKey(bufferId));
   }
 
+  async expireAllActiveWindows(bufferId: string): Promise<void> {
+    const redis = getRedis();
+    const timers = await redis.zrange(this.getTimerKey(bufferId), 0, -1);
+    if (timers.length === 0) return;
+    
+    const pipeline = redis.pipeline();
+    for (const winId of timers) {
+      pipeline.zadd(this.getTimerKey(bufferId), 0, winId);
+    }
+    await pipeline.exec();
+  }
+
   // --- Sweeper Flow ---
 
   async getExpiredWindows(bufferId: string, nowUnixMs: number): Promise<string[]> {
@@ -94,35 +106,58 @@ export class RedisService {
     await pipeline.exec();
   }
 
+  private async enforceActiveCountFloor(bufferId: string): Promise<void> {
+    const redis = getRedis();
+    const countStr = await redis.get(this.getActiveCountKey(bufferId));
+    if (countStr && parseInt(countStr, 10) < 0) {
+      await redis.set(this.getActiveCountKey(bufferId), 0);
+    }
+  }
+
   async consumeWindow(bufferId: string, identifier: string, windowId: string): Promise<void> {
     const redis = getRedis();
+    const removedOpen = await redis.hdel(this.getOpenWindowsKey(bufferId), identifier);
+    const removedBlocked = await redis.hdel(this.getBlockedWindowsKey(bufferId), identifier);
+    
     const pipeline = redis.pipeline();
-    pipeline.hdel(this.getOpenWindowsKey(bufferId), identifier); // Garante a limpeza se o consumo for imediato
-    pipeline.hdel(this.getBlockedWindowsKey(bufferId), identifier);
     pipeline.zrem(this.getConsumptionTimerKey(bufferId), windowId);
-    pipeline.decr(this.getActiveCountKey(bufferId)); // Libera o slot de concorrência global
     pipeline.hdel(this.getResetsKey(bufferId), windowId);
+    
+    if (removedOpen > 0 || removedBlocked > 0) {
+      pipeline.decr(this.getActiveCountKey(bufferId));
+    }
     await pipeline.exec();
+    await this.enforceActiveCountFloor(bufferId);
   }
 
   async expireWindowWithoutConsumption(bufferId: string, identifier: string, windowId: string): Promise<void> {
     const redis = getRedis();
+    const removedOpen = await redis.hdel(this.getOpenWindowsKey(bufferId), identifier);
+    
     const pipeline = redis.pipeline();
-    pipeline.hdel(this.getOpenWindowsKey(bufferId), identifier);
     pipeline.zrem(this.getTimerKey(bufferId), windowId);
-    pipeline.decr(this.getActiveCountKey(bufferId)); 
     pipeline.hdel(this.getResetsKey(bufferId), windowId);
+    
+    if (removedOpen > 0) {
+      pipeline.decr(this.getActiveCountKey(bufferId));
+    }
     await pipeline.exec();
+    await this.enforceActiveCountFloor(bufferId);
   }
 
   async expireConsumptionTimeout(bufferId: string, identifier: string, windowId: string): Promise<void> {
     const redis = getRedis();
+    const removedBlocked = await redis.hdel(this.getBlockedWindowsKey(bufferId), identifier);
+    
     const pipeline = redis.pipeline();
-    pipeline.hdel(this.getBlockedWindowsKey(bufferId), identifier);
     pipeline.zrem(this.getConsumptionTimerKey(bufferId), windowId);
-    pipeline.decr(this.getActiveCountKey(bufferId)); // Libera a concorrência global retida
     pipeline.hdel(this.getResetsKey(bufferId), windowId);
+    
+    if (removedBlocked > 0) {
+      pipeline.decr(this.getActiveCountKey(bufferId));
+    }
     await pipeline.exec();
+    await this.enforceActiveCountFloor(bufferId);
   }
 
   async clearAllBufferData(bufferId: string): Promise<void> {
@@ -147,24 +182,26 @@ export class RedisService {
     
     for (const winId of openWindows) {
       pipeline.hdel(this.getResetsKey(bufferId), winId);
-      pipeline.decr(this.getActiveCountKey(bufferId));
     }
     
     await pipeline.exec();
+    
+    // Recalcula activeCount exatamente para evitar números negativos
+    const blockedCount = await redis.hlen(this.getBlockedWindowsKey(bufferId));
+    await redis.set(this.getActiveCountKey(bufferId), blockedCount);
   }
 
   async clearWindowsAwaitingConsumption(bufferId: string): Promise<void> {
     const redis = getRedis();
-    const blockedWindows = await redis.hvals(this.getBlockedWindowsKey(bufferId));
     const pipeline = redis.pipeline();
     
     pipeline.del(this.getConsumptionTimerKey(bufferId));
     pipeline.del(this.getBlockedWindowsKey(bufferId));
     
-    for (const _ of blockedWindows) {
-      pipeline.decr(this.getActiveCountKey(bufferId));
-    }
-    
     await pipeline.exec();
+
+    // Recalcula activeCount exatamente para evitar números negativos
+    const openCount = await redis.hlen(this.getOpenWindowsKey(bufferId));
+    await redis.set(this.getActiveCountKey(bufferId), openCount);
   }
 }

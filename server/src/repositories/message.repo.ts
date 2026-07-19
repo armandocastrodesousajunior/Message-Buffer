@@ -18,7 +18,7 @@ export class MessageRepository {
       window_id: windowId,
       buffer_id: bufferId,
       identifier,
-      content: JSON.stringify(content),
+      content: typeof content === 'string' ? content : JSON.stringify(content),
       type,
       received_at: new Date().toISOString(),
     };

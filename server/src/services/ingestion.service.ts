@@ -80,22 +80,27 @@ export class IngestionService {
         return { accepted: true, window_id: '', queued: true, queue_position: queuePosition, blocked };
       }
 
-      // 1. Persist no Postgres para gerar o histórico e o ID
-      const window = await this.windowRepo.create(bufferId, request.identifier, buffer.window_time);
-      
-      // 2. Trava em memória RAM no Redis
-      await this.windowManager.startWindow(buffer, window.id, request.identifier);
-      
-      // 3. Empilha mensagem na fila efêmera (Redis)
-      await this.messageRepo.create(
-        window.id,
-        bufferId,
-        request.identifier,
-        request.content,
-        request.type
-      );
+      try {
+        // 1. Persist no Postgres para gerar o histórico e o ID
+        const window = await this.windowRepo.create(bufferId, request.identifier, buffer.window_time);
+        
+        // 2. Trava em memória RAM no Redis
+        await this.windowManager.startWindow(buffer, window.id, request.identifier);
+        
+        // 3. Empilha mensagem na fila efêmera (Redis)
+        await this.messageRepo.create(
+          window.id,
+          bufferId,
+          request.identifier,
+          request.content,
+          request.type
+        );
 
-      return { accepted: true, window_id: window.id, queued: false, blocked };
+        return { accepted: true, window_id: window.id, queued: false, blocked };
+      } catch (err) {
+        await this.redisService.decrementActiveCount(bufferId);
+        throw err;
+      }
     }
 
     // Queue limit exceeded

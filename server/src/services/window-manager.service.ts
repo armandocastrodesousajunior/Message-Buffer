@@ -75,10 +75,10 @@ export class WindowManagerService {
   }
 
   async recoverWindows(): Promise<void> {
-    // Com o Redis, estados efêmeros já estão em RAM.
-    // Apenas forçamos o processamento de filas represadas para garantir robustez.
     const allBuffers = await this.bufferRepo.findAll();
     for (const buffer of allBuffers) {
+       // Zera o cronômetro de todas as janelas ativas para que o sweeper as consuma instantaneamente
+       await this.redisService.expireAllActiveWindows(buffer.id);
        await this.processQueue(buffer);
     }
   }
@@ -168,11 +168,17 @@ export class WindowManagerService {
       }
 
       // Inicia a nova janela para este identifier
-      const window = await this.windowRepo.create(buffer.id, nextIdentifier, buffer.window_time);
-      await this.startWindow(buffer, window.id, nextIdentifier);
-      
-      for (const msg of batch) {
-        await this.messageRepo.create(window.id, buffer.id, msg.identifier, msg.content, msg.type).catch(console.error);
+      try {
+        const window = await this.windowRepo.create(buffer.id, nextIdentifier, buffer.window_time);
+        await this.startWindow(buffer, window.id, nextIdentifier);
+        
+        for (const msg of batch) {
+          await this.messageRepo.create(window.id, buffer.id, msg.identifier, msg.content, msg.type).catch(console.error);
+        }
+      } catch (err) {
+        console.error('[processQueue] Erro ao criar janela', err);
+        await this.redisService.decrementActiveCount(buffer.id);
+        break;
       }
     }
   }
