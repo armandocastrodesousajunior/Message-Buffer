@@ -17,7 +17,7 @@ export function BufferDetail() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
   const [confirmingId, setConfirmingId] = useState('');
-  const [showResetModal, setShowResetModal] = useState(false);
+  const [clearTarget, setClearTarget] = useState<'open' | 'waiting' | 'consumption' | 'all' | null>(null);
   const [resetting, setResetting] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
@@ -72,16 +72,24 @@ export function BufferDetail() {
     }
   };
 
-  const handleReset = async () => {
-    if (!buffer) return;
+  const handleClear = async () => {
+    if (!buffer || !clearTarget) return;
     setResetting(true);
     try {
-      await api.buffers.resetData(buffer.id);
+      if (clearTarget === 'all') {
+        await api.buffers.resetData(buffer.id);
+      } else if (clearTarget === 'open') {
+        await api.buffers.clearOpenWindows(buffer.id);
+      } else if (clearTarget === 'waiting') {
+        await api.buffers.clearWaitingMessages(buffer.id);
+      } else if (clearTarget === 'consumption') {
+        await api.buffers.clearAwaitingConsumption(buffer.id);
+      }
       setPage(1);
       await fetchData(buffer.id, true, 1);
-      setShowResetModal(false);
+      setClearTarget(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao resetar buffer');
+      setError(err instanceof Error ? err.message : 'Erro ao realizar a limpeza');
     } finally {
       setResetting(false);
     }
@@ -108,7 +116,7 @@ export function BufferDetail() {
           <button
             className="btn"
             style={{ background: '#ef4444', color: '#fff', border: 'none' }}
-            onClick={() => setShowResetModal(true)}
+            onClick={() => setClearTarget('all')}
           >
             Limpar Buffer
           </button>
@@ -140,6 +148,10 @@ export function BufferDetail() {
           <div className="detail-item">
             <span className="detail-label">Limite de Janelas</span>
             <span>{buffer.max_concurrent_windows ?? 'Ilimitado'}</span>
+          </div>
+          <div className="detail-item">
+            <span className="detail-label">Limite de Resets</span>
+            <span>{buffer.max_resets ?? 'Ilimitado'}</span>
           </div>
           <div className="detail-item">
             <span className="detail-label">Confirmação</span>
@@ -179,18 +191,45 @@ export function BufferDetail() {
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{lastUpdateText}</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginTop: '16px' }}>
-          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center', position: 'relative' }}>
             <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--primary)' }}>{stats.openWindows}</div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Janelas Abertas</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: 8 }}>Janelas Abertas</div>
+            {stats.openWindows > 0 && (
+              <button 
+                className="btn btn-xs" 
+                style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)', border: 'none' }}
+                onClick={() => setClearTarget('open')}
+              >
+                🧹 Limpar
+              </button>
+            )}
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+          <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center', position: 'relative' }}>
             <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#d97706' }}>{stats.waitingMessages}</div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Mensagens na Fila</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: 8 }}>Mensagens na Fila</div>
+            {stats.waitingMessages > 0 && (
+              <button 
+                className="btn btn-xs" 
+                style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)', border: 'none' }}
+                onClick={() => setClearTarget('waiting')}
+              >
+                🧹 Limpar
+              </button>
+            )}
           </div>
           {!!buffer.require_consumption && (
-            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '16px', borderRadius: '8px', textAlign: 'center', position: 'relative' }}>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444' }}>{windows.length}</div>
-              <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>Aguardando Consumo</div>
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: 8 }}>Aguardando Consumo</div>
+              {windows.length > 0 && (
+                <button 
+                  className="btn btn-xs" 
+                  style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)', border: 'none' }}
+                  onClick={() => setClearTarget('consumption')}
+                >
+                  🧹 Limpar
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -316,20 +355,25 @@ export function BufferDetail() {
         )}
       </div>
 
-      {showResetModal && (
+      {clearTarget && (
         <div className="modal-overlay">
           <div className="modal">
-            <h3>⚠️ Limpar Dados do Buffer</h3>
+            <h3>
+              ⚠️ {clearTarget === 'all' ? 'Limpar Buffer' : 'Limpeza Parcial'}
+            </h3>
             <p>
-              Você está prestes a apagar <strong>todos</strong> os logs de processamento, janelas abertas e mensagens na fila deste buffer.
+              {clearTarget === 'all' && 'Você está prestes a apagar TODOS os logs de processamento, janelas abertas e mensagens na fila deste buffer.'}
+              {clearTarget === 'open' && 'Você está prestes a interromper e apagar TODAS as janelas que estão ativas no momento.'}
+              {clearTarget === 'waiting' && 'Você está prestes a apagar TODAS as mensagens que estão presas na fila aguardando processamento.'}
+              {clearTarget === 'consumption' && 'Você está prestes a descartar TODAS as janelas que já foram enviadas mas ainda não foram consumidas.'}
             </p>
             <p className="text-muted" style={{ marginBottom: 24 }}>
-              Esta ação é irreversível e as integrações não processadas serão perdidas. Deseja continuar?
+              Esta ação é irreversível e dados não processados serão perdidos. Deseja continuar?
             </p>
             <div className="form-actions">
               <button 
                 className="btn btn-ghost" 
-                onClick={() => setShowResetModal(false)}
+                onClick={() => setClearTarget(null)}
                 disabled={resetting}
               >
                 Cancelar
@@ -337,10 +381,10 @@ export function BufferDetail() {
               <button 
                 className="btn" 
                 style={{ background: '#ef4444', color: '#fff', border: 'none' }}
-                onClick={handleReset}
+                onClick={handleClear}
                 disabled={resetting}
               >
-                {resetting ? 'Limpando...' : 'Sim, Limpar Tudo'}
+                {resetting ? 'Limpando...' : 'Sim, Limpar'}
               </button>
             </div>
           </div>

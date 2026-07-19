@@ -52,6 +52,7 @@ export interface BufferData {
   require_consumption: boolean;
   consumption_timeout: number | null;
   webhook_timeout: number;
+  max_resets: number | null;
   api_key: string;
   created_at: string;
   updated_at: string;
@@ -65,6 +66,7 @@ export interface CreateBufferInput {
   require_consumption?: boolean;
   consumption_timeout?: number | null;
   webhook_timeout?: number;
+  max_resets?: number | null;
 }
 
 export interface UpdateBufferInput {
@@ -75,6 +77,7 @@ export interface UpdateBufferInput {
   require_consumption?: boolean;
   consumption_timeout?: number | null;
   webhook_timeout?: number;
+  max_resets?: number | null;
 }
 
 export interface WindowData {
@@ -131,5 +134,11 @@ export const api = {
       request<{ openWindows: number; waitingMessages: number }>(`/buffers/${id}/stats`),
     resetData: (id: string) =>
       request<void>(`/buffers/${id}/reset`, { method: 'POST' }),
+    clearOpenWindows: (id: string) =>
+      request<void>(`/buffers/${id}/clear/open-windows`, { method: 'POST' }),
+    clearWaitingMessages: (id: string) =>
+      request<void>(`/buffers/${id}/clear/waiting-messages`, { method: 'POST' }),
+    clearAwaitingConsumption: (id: string) =>
+      request<void>(`/buffers/${id}/clear/awaiting-consumption`, { method: 'POST' }),
   },
 };

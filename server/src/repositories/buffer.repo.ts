@@ -33,6 +33,7 @@ export class BufferRepository {
       require_consumption: input.require_consumption ?? false,
       consumption_timeout: (Number.isFinite(input.consumption_timeout) ? input.consumption_timeout : null) as number | null,
       webhook_timeout: input.webhook_timeout ?? 30000,
+      max_resets: (Number.isFinite(input.max_resets) ? input.max_resets : null) as number | null,
       api_key: uuid(),
       created_at: now,
       updated_at: now,
@@ -55,6 +56,7 @@ export class BufferRepository {
     if (input.require_consumption !== undefined) updates.require_consumption = input.require_consumption;
     if (input.consumption_timeout !== undefined) updates.consumption_timeout = input.consumption_timeout;
     if (input.webhook_timeout !== undefined) updates.webhook_timeout = input.webhook_timeout;
+    if (input.max_resets !== undefined) updates.max_resets = input.max_resets;
 
     await getDatabase()('buffers').where({ id }).update(updates);
     return this.findById(id);

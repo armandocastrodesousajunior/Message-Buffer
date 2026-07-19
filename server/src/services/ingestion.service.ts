@@ -35,7 +35,10 @@ export class IngestionService {
     const openWindow = await this.windowRepo.findOpenByIdentifier(bufferId, request.identifier);
 
     if (openWindow) {
-      await this.windowManager.resetWindow(buffer, openWindow.id, request.identifier);
+      if (buffer.max_resets === null || openWindow.reset_count < buffer.max_resets) {
+        await this.windowManager.resetWindow(buffer, openWindow.id, request.identifier);
+        await this.windowRepo.incrementResetCount(openWindow.id);
+      }
       await this.messageRepo.create(
         openWindow.id,
         bufferId,

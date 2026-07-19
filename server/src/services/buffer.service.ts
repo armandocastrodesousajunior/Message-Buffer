@@ -40,4 +40,28 @@ export class BufferService {
     await db('windows').where({ buffer_id: id }).delete();
     return true;
   }
+
+  async clearOpenWindows(id: string): Promise<boolean> {
+    const db = (await import('../database/connection.js')).getDatabase();
+    await db('messages')
+      .whereIn('window_id', db('windows').select('id').where({ buffer_id: id }).whereIn('status', ['open', 'processing']))
+      .delete();
+    await db('windows').where({ buffer_id: id }).whereIn('status', ['open', 'processing']).delete();
+    return true;
+  }
+
+  async clearWaitingMessages(id: string): Promise<boolean> {
+    const db = (await import('../database/connection.js')).getDatabase();
+    await db('waiting_messages').where({ buffer_id: id }).delete();
+    return true;
+  }
+
+  async clearWindowsAwaitingConsumption(id: string): Promise<boolean> {
+    const db = (await import('../database/connection.js')).getDatabase();
+    await db('messages')
+      .whereIn('window_id', db('windows').select('id').where({ buffer_id: id, status: 'closed' }))
+      .delete();
+    await db('windows').where({ buffer_id: id, status: 'closed' }).delete();
+    return true;
+  }
 }

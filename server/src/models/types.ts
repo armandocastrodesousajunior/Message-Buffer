@@ -7,6 +7,7 @@ export interface BufferRecord {
   require_consumption: boolean;
   consumption_timeout: number | null;
   webhook_timeout: number;
+  max_resets: number | null;
   api_key: string;
   created_at: string;
   updated_at: string;
@@ -17,6 +18,7 @@ export interface WindowRecord {
   buffer_id: string;
   identifier: string;
   status: 'open' | 'processing' | 'closed' | 'consumed' | 'expired';
+  reset_count: number;
   expires_at: string;
   created_at: string;
 }
@@ -75,6 +77,7 @@ export interface CreateBufferInput {
   require_consumption?: boolean;
   consumption_timeout?: number | null;
   webhook_timeout?: number;
+  max_resets?: number | null;
 }
 
 export interface UpdateBufferInput {
@@ -85,4 +88,5 @@ export interface UpdateBufferInput {
   require_consumption?: boolean;
   consumption_timeout?: number | null;
   webhook_timeout?: number;
+  max_resets?: number | null;
 }

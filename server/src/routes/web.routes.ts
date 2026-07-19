@@ -20,7 +20,7 @@ export function createWebRoutes(
   });
 
   router.post('/buffers', async (req: Request, res: Response) => {
-    const { name, window_time, webhook_url, max_concurrent_windows, require_consumption, consumption_timeout, webhook_timeout } = req.body;
+    const { name, window_time, webhook_url, max_concurrent_windows, require_consumption, consumption_timeout, webhook_timeout, max_resets } = req.body;
 
     if (!name || !window_time || !webhook_url) {
       res.status(400).json({
@@ -46,6 +46,10 @@ export function createWebRoutes(
         webhook_timeout == null || webhook_timeout === ''
           ? 30000
           : parseInt(webhook_timeout, 10),
+      max_resets:
+        max_resets == null || max_resets === ''
+          ? null
+          : parseInt(max_resets, 10),
     });
 
     res.status(201).json(buffer);
@@ -61,7 +65,7 @@ export function createWebRoutes(
   });
 
   router.put('/buffers/:id', async (req: Request, res: Response) => {
-    const { name, window_time, webhook_url, max_concurrent_windows, require_consumption, consumption_timeout, webhook_timeout } = req.body;
+    const { name, window_time, webhook_url, max_concurrent_windows, require_consumption, consumption_timeout, webhook_timeout, max_resets } = req.body;
 
     const buffer = await bufferService.update(req.params.id, {
       name,
@@ -81,6 +85,10 @@ export function createWebRoutes(
         webhook_timeout == null || webhook_timeout === ''
           ? undefined
           : parseInt(webhook_timeout, 10),
+      max_resets:
+        max_resets == null || max_resets === ''
+          ? null
+          : parseInt(max_resets, 10),
     });
 
     if (!buffer) {
@@ -145,6 +153,27 @@ export function createWebRoutes(
         windowManager.clearTimersForBuffer(req.params.id);
       }
       await bufferService.clearBufferData(req.params.id);
+      res.json({ success: true });
+    });
+
+    router.post('/buffers/:id/clear/open-windows', async (req: Request, res: Response) => {
+      if (windowManager) {
+        windowManager.clearTimersForBuffer(req.params.id);
+      }
+      await bufferService.clearOpenWindows(req.params.id);
+      res.json({ success: true });
+    });
+
+    router.post('/buffers/:id/clear/waiting-messages', async (req: Request, res: Response) => {
+      await bufferService.clearWaitingMessages(req.params.id);
+      res.json({ success: true });
+    });
+
+    router.post('/buffers/:id/clear/awaiting-consumption', async (req: Request, res: Response) => {
+      if (windowManager) {
+        windowManager.clearTimersForBuffer(req.params.id);
+      }
+      await bufferService.clearWindowsAwaitingConsumption(req.params.id);
       res.json({ success: true });
     });
   }

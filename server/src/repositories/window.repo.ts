@@ -77,6 +77,7 @@ export class WindowRepository {
       buffer_id: bufferId,
       identifier,
       status: 'open',
+      reset_count: 0,
       expires_at: new Date(now.getTime() + windowTimeSeconds * 1000).toISOString(),
       created_at: now.toISOString(),
     };
@@ -113,5 +114,9 @@ export class WindowRepository {
       .count('* as count')
       .first();
     return Number(result?.count || 0);
+  }
+
+  async incrementResetCount(id: string): Promise<void> {
+    await getDatabase()('windows').where({ id }).increment('reset_count', 1);
   }
 }

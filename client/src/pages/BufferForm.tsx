@@ -10,6 +10,7 @@ interface FormData {
   require_consumption: boolean;
   consumption_timeout: string;
   webhook_timeout: string;
+  max_resets: string;
 }
 
 export function BufferForm() {
@@ -25,6 +26,7 @@ export function BufferForm() {
     require_consumption: false,
     consumption_timeout: '',
     webhook_timeout: '30000',
+    max_resets: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -48,6 +50,7 @@ export function BufferForm() {
         consumption_timeout:
           buffer.consumption_timeout === null ? '' : String(buffer.consumption_timeout),
         webhook_timeout: String(buffer.webhook_timeout),
+        max_resets: buffer.max_resets === null ? '' : String(buffer.max_resets),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar buffer');
@@ -75,6 +78,7 @@ export function BufferForm() {
         consumption_timeout:
           form.consumption_timeout === '' ? null : parseInt(form.consumption_timeout, 10),
         webhook_timeout: parseInt(form.webhook_timeout, 10) || 30000,
+        max_resets: form.max_resets === '' ? null : parseInt(form.max_resets, 10),
       };
 
       if (isEditing) {
@@ -212,6 +216,23 @@ export function BufferForm() {
                 placeholder="30000"
               />
               <span className="form-hint">Padrão: 30000ms (30 segundos)</span>
+            </div>
+
+            <div className="form-group" style={{ margin: 0 }}>
+              <label htmlFor="max_resets">
+                Limite de Resets (Anti-Eternidade)
+                <span className="tooltip-icon" title="Número máximo de vezes que o recebimento de uma mensagem adia a expiração da janela. Deixe vazio para não ter limite."> ℹ️</span>
+              </label>
+              <input
+                id="max_resets"
+                name="max_resets"
+                type="number"
+                min="1"
+                value={form.max_resets}
+                onChange={handleChange}
+                placeholder="Ex: 20 (Deixe vazio para ilimitado)"
+              />
+              <span className="form-hint">Evita que fluxos contínuos de mensagens mantenham a janela aberta para sempre.</span>
             </div>
 
           </div>

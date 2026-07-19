@@ -34,6 +34,7 @@ export async function runMigrations(): Promise<void> {
     '005_create_logs',
     '006_add_buffer_advanced_options',
     '007_add_window_consumed',
+    '008_add_max_resets',
   ];
 
   const hasTable = await database.schema.hasTable('_migrations');
@@ -70,6 +71,9 @@ export async function runMigrations(): Promise<void> {
       case '007_add_window_consumed':
         // No structural change needed — 'consumed' is already valid as text
         // Just ensure existing windows table allows it
+        break;
+      case '008_add_max_resets':
+        await addMaxResets(database);
         break;
     }
 
@@ -144,6 +148,22 @@ async function addBufferAdvancedOptions(database: Knex): Promise<void> {
       table.boolean('require_consumption').defaultTo(false);
       table.integer('consumption_timeout').nullable();
       table.integer('webhook_timeout').defaultTo(30000);
+    });
+  }
+}
+
+async function addMaxResets(database: Knex): Promise<void> {
+  const hasMaxResets = await database.schema.hasColumn('buffers', 'max_resets');
+  if (!hasMaxResets) {
+    await database.schema.alterTable('buffers', (table) => {
+      table.integer('max_resets').nullable();
+    });
+  }
+
+  const hasResetCount = await database.schema.hasColumn('windows', 'reset_count');
+  if (!hasResetCount) {
+    await database.schema.alterTable('windows', (table) => {
+      table.integer('reset_count').notNullable().defaultTo(0);
     });
   }
 }
