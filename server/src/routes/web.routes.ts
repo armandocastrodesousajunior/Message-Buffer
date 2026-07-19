@@ -99,6 +99,11 @@ export function createWebRoutes(
       res.status(404).json({ error: 'Buffer not found' });
       return;
     }
+    
+    if (windowManager) {
+      await windowManager.processQueue(buffer);
+    }
+    
     res.json(buffer);
   });
 
