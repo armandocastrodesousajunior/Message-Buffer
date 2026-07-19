@@ -27,11 +27,22 @@ export class WindowManagerService {
 
   private async sweepExpiredWindows(): Promise<void> {
     try {
-      const expired = await this.windowRepo.findAllOpenExpired();
-      for (const window of expired) {
+      const openExpired = await this.windowRepo.findAllExpired('open');
+      for (const window of openExpired) {
         const buffer = await this.bufferRepo.findById(window.buffer_id);
         if (buffer) {
           await this.expireWindow(buffer, window.id, window.identifier);
+        }
+      }
+
+      const closedExpired = await this.windowRepo.findAllExpired('closed');
+      for (const window of closedExpired) {
+        const claimed = await this.windowRepo.claimWindowForExpiration(window.id);
+        if (claimed) {
+          const buffer = await this.bufferRepo.findById(window.buffer_id);
+          if (buffer) {
+            await this.processQueue(buffer);
+          }
         }
       }
     } catch (err) {
@@ -94,7 +105,7 @@ export class WindowManagerService {
   }
 
   async recoverWindows(): Promise<void> {
-    const expired = await this.windowRepo.findAllOpenExpired();
+    const expired = await this.windowRepo.findAllExpired('open');
     for (const window of expired) {
       const buffer = await this.bufferRepo.findById(window.buffer_id);
       if (buffer) {
@@ -158,10 +169,13 @@ export class WindowManagerService {
     if (buffer.require_consumption && result.status === 200) {
       await this.windowRepo.updateStatus(windowId, 'consumed');
     } else {
-      await this.windowRepo.updateStatus(windowId, 'closed');
-
       if (buffer.require_consumption && buffer.consumption_timeout != null) {
+        const consExpiresAt = new Date(Date.now() + buffer.consumption_timeout).toISOString();
+        await this.windowRepo.updateExpiresAt(windowId, consExpiresAt);
+        await this.windowRepo.updateStatus(windowId, 'closed');
         this.startConsumptionTimer(buffer, windowId, identifier);
+      } else {
+        await this.windowRepo.updateStatus(windowId, 'closed');
       }
     }
 
@@ -211,7 +225,7 @@ export class WindowManagerService {
     const limit = buffer.max_concurrent_windows;
 
     while (true) {
-      const timerCount = this.countTimersForBuffer(buffer.id);
+      const timerCount = await this.windowRepo.countAllOpenByBuffer(buffer.id);
       if (limit !== null && timerCount >= limit) break;
 
       let next = await this.waitingRepo.findNextByBuffer(buffer.id);
