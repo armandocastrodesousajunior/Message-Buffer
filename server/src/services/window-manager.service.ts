@@ -13,6 +13,7 @@ interface ActiveWindow {
 export class WindowManagerService {
   private activeTimers = new Map<string, ActiveWindow>();
   private consumptionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private sweeperInterval: ReturnType<typeof setInterval>;
 
   constructor(
     private bufferRepo: BufferRepository,
@@ -20,7 +21,23 @@ export class WindowManagerService {
     private messageRepo: MessageRepository,
     private waitingRepo: WaitingRepository,
     private webhookService: WebhookService
-  ) {}
+  ) {
+    this.sweeperInterval = setInterval(() => this.sweepExpiredWindows(), 5000);
+  }
+
+  private async sweepExpiredWindows(): Promise<void> {
+    try {
+      const expired = await this.windowRepo.findAllOpenExpired();
+      for (const window of expired) {
+        const buffer = await this.bufferRepo.findById(window.buffer_id);
+        if (buffer) {
+          await this.expireWindow(buffer, window.id, window.identifier);
+        }
+      }
+    } catch (err) {
+      console.error('[sweepExpiredWindows] Erro na varredura:', err);
+    }
+  }
 
   async resetWindow(
     buffer: BufferRecord,
@@ -112,9 +129,12 @@ export class WindowManagerService {
     }
 
     try {
-      await this.windowRepo.updateStatus(windowId, 'processing');
+      const claimed = await this.windowRepo.claimWindowForProcessing(windowId);
+      if (!claimed) {
+        return; // Outro worker assumiu ou janela já processada
+      }
     } catch (err) {
-      console.error(`[expireWindow] Falha ao atualizar status para processing na janela ${windowId}:`, err);
+      console.error(`[expireWindow] Falha ao dar claim na janela ${windowId}:`, err);
       const retryTimer = setTimeout(() => this.expireWindow(buffer, windowId, identifier), 5000);
       retryTimer.unref();
       this.activeTimers.set(timerKey, { timer: retryTimer, windowId });
@@ -251,6 +271,7 @@ export class WindowManagerService {
   }
 
   clearAllTimers(): void {
+    clearInterval(this.sweeperInterval);
     for (const [, active] of this.activeTimers) {
       clearTimeout(active.timer);
     }

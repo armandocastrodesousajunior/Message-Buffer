@@ -38,9 +38,9 @@ export class WindowRepository {
     return Number(result?.count || 0);
   }
 
-  async findAllOpenExpired(): Promise<WindowRecord[]> {
+  async findAllExpired(status: WindowStatus): Promise<WindowRecord[]> {
     return getDatabase()('windows')
-      .where({ status: 'open' })
+      .where({ status })
       .where('expires_at', '<=', new Date().toISOString());
   }
 
@@ -86,6 +86,20 @@ export class WindowRepository {
 
   async updateStatus(id: string, status: WindowStatus): Promise<void> {
     await getDatabase()('windows').where({ id }).update({ status });
+  }
+
+  async claimWindowForProcessing(id: string): Promise<boolean> {
+    const updated = await getDatabase()('windows')
+      .where({ id, status: 'open' })
+      .update({ status: 'processing' });
+    return updated > 0;
+  }
+
+  async claimWindowForExpiration(id: string): Promise<boolean> {
+    const updated = await getDatabase()('windows')
+      .where({ id, status: 'closed' })
+      .update({ status: 'expired' });
+    return updated > 0;
   }
 
   async updateExpiresAt(id: string, expiresAt: string): Promise<void> {
