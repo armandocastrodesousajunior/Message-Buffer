@@ -70,6 +70,7 @@ export interface WebhookPayload {
 }
 
 export interface CreateBufferInput {
+  id?: string;
   name: string;
   window_time: number;
   webhook_url: string;

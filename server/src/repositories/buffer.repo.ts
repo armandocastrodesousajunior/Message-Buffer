@@ -25,7 +25,7 @@ export class BufferRepository {
   async create(input: CreateBufferInput): Promise<BufferRecord> {
     const now = new Date().toISOString();
     const record: BufferRecord = {
-      id: uuid(),
+      id: input.id || uuid(),
       name: input.name,
       window_time: input.window_time,
       webhook_url: input.webhook_url,

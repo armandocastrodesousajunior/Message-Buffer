@@ -27,11 +27,8 @@ export class IngestionService {
     this.redisService = new RedisService();
   }
 
-  async ingest(bufferId: string, apiKey: string, request: IngestRequest): Promise<IngestResult> {
-    const buffer = await this.bufferRepo.findById(bufferId);
-    if (!buffer || buffer.api_key !== apiKey) {
-      throw new Error('BUFFER_NOT_FOUND');
-    }
+  async ingest(buffer: BufferRecord, request: IngestRequest): Promise<IngestResult> {
+    const bufferId = buffer.id;
 
     const blocked = buffer.require_consumption
       ? await this.redisService.isBlocked(bufferId, request.identifier)
