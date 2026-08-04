@@ -140,46 +140,65 @@ export class WindowManagerService {
   }
 
   async processQueue(buffer: BufferRecord): Promise<void> {
-    const limit = buffer.max_concurrent_windows;
+    // Tenta adquirir o lock exclusivo para este buffer
+    // Se outro processQueue já está rodando, simplesmente ignora esta chamada
+    const acquired = await this.redisService.acquireProcessQueueLock(buffer.id);
+    if (!acquired) return;
 
-    while (true) {
-      if (limit !== null) {
-         const newCount = await this.redisService.incrementActiveCount(buffer.id);
-         if (newCount > limit) {
-             await this.redisService.decrementActiveCount(buffer.id);
-             break; // Bateu no limite global
-         }
-      } else {
-         await this.redisService.incrementActiveCount(buffer.id);
+    try {
+      const limit = buffer.max_concurrent_windows;
+      
+      // Reconcilia o active_count com a realidade antes de começar
+      // Isso corrige desincronizações causadas por chamadas concorrentes anteriores
+      const realCount = await this.redisService.reconcileActiveCount(buffer.id);
+
+      // Se já atingiu o limite real, nem entra no loop
+      if (limit !== null && realCount >= limit) {
+        return;
       }
 
-      // Procura o próximo identifier na fila que não esteja bloqueado
-      const nextIdentifier = await this.waitingRepo.popNextUnlockedIdentifier(buffer.id, this.redisService);
-      if (!nextIdentifier) {
+      while (true) {
+        if (limit !== null) {
+          const newCount = await this.redisService.incrementActiveCount(buffer.id);
+          if (newCount > limit) {
+            await this.redisService.decrementActiveCount(buffer.id);
+            break; // Bateu no limite global
+          }
+        } else {
+          await this.redisService.incrementActiveCount(buffer.id);
+        }
+
+        // Procura o próximo identifier na fila que não esteja bloqueado
+        const nextIdentifier = await this.waitingRepo.popNextUnlockedIdentifier(buffer.id, this.redisService);
+        if (!nextIdentifier) {
           // Reverte o contador já que não tem nada pra consumir
           await this.redisService.decrementActiveCount(buffer.id);
           break; // Sem candidatos elegíveis
-      }
+        }
 
-      const batch = await this.waitingRepo.dequeueByIdentifier(buffer.id, nextIdentifier);
-      if (batch.length === 0) {
+        const batch = await this.waitingRepo.dequeueByIdentifier(buffer.id, nextIdentifier);
+        if (batch.length === 0) {
           await this.redisService.decrementActiveCount(buffer.id);
           continue;
-      }
-
-      // Inicia a nova janela para este identifier
-      try {
-        const window = await this.windowRepo.create(buffer.id, nextIdentifier, buffer.window_time);
-        await this.startWindow(buffer, window.id, nextIdentifier);
-        
-        for (const msg of batch) {
-          await this.messageRepo.create(window.id, buffer.id, msg.identifier, msg.content, msg.type).catch(console.error);
         }
-      } catch (err) {
-        console.error('[processQueue] Erro ao criar janela', err);
-        await this.redisService.decrementActiveCount(buffer.id);
-        break;
+
+        // Inicia a nova janela para este identifier
+        try {
+          const window = await this.windowRepo.create(buffer.id, nextIdentifier, buffer.window_time);
+          await this.startWindow(buffer, window.id, nextIdentifier);
+          
+          for (const msg of batch) {
+            await this.messageRepo.create(window.id, buffer.id, msg.identifier, msg.content, msg.type).catch(console.error);
+          }
+        } catch (err) {
+          console.error('[processQueue] Erro ao criar janela', err);
+          await this.redisService.decrementActiveCount(buffer.id);
+          break;
+        }
       }
+    } finally {
+      // Sempre libera o lock, mesmo se ocorrer um erro
+      await this.redisService.releaseProcessQueueLock(buffer.id);
     }
   }
 

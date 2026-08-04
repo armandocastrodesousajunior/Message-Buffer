@@ -9,6 +9,7 @@ export class RedisService {
   private getOpenWindowsKey(bufferId: string) { return `buffer:${bufferId}:open_windows`; }
   private getBlockedWindowsKey(bufferId: string) { return `buffer:${bufferId}:blocked_windows`; }
   private getActiveCountKey(bufferId: string) { return `buffer:${bufferId}:active_count`; }
+  private getProcessQueueLockKey(bufferId: string) { return `buffer:${bufferId}:process_queue_lock`; }
 
   // --- Ingestion Flow ---
 
@@ -56,6 +57,39 @@ export class RedisService {
 
   async getOpenWindowCount(bufferId: string): Promise<number> {
     return getRedis().hlen(this.getOpenWindowsKey(bufferId));
+  }
+
+  /**
+   * Tenta adquirir um lock exclusivo para o processQueue deste buffer.
+   * Retorna true se adquiriu o lock (pode prosseguir), false se já está sendo processado.
+   * O lock expira automaticamente em 30s para evitar deadlocks.
+   */
+  async acquireProcessQueueLock(bufferId: string): Promise<boolean> {
+    const result = await getRedis().set(
+      this.getProcessQueueLockKey(bufferId),
+      '1',
+      'EX', 30,
+      'NX'
+    );
+    return result === 'OK';
+  }
+
+  async releaseProcessQueueLock(bufferId: string): Promise<void> {
+    await getRedis().del(this.getProcessQueueLockKey(bufferId));
+  }
+
+  /**
+   * Reconcilia o active_count com a realidade:
+   * conta janelas realmente abertas (open_windows hash) + bloqueadas (blocked_windows hash).
+   * Chame isso quando suspeitar de dessincronização.
+   */
+  async reconcileActiveCount(bufferId: string): Promise<number> {
+    const redis = getRedis();
+    const openCount = await redis.hlen(this.getOpenWindowsKey(bufferId));
+    const blockedCount = await redis.hlen(this.getBlockedWindowsKey(bufferId));
+    const realCount = openCount + blockedCount;
+    await redis.set(this.getActiveCountKey(bufferId), realCount);
+    return realCount;
   }
 
   async expireAllActiveWindows(bufferId: string): Promise<void> {
