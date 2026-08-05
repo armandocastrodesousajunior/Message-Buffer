@@ -98,6 +98,10 @@ export interface LogData {
   webhook_response_status: number | null;
   webhook_response_body: string | null;
   created_at: string;
+  window_started_at: string | null;
+  window_finished_at: string | null;
+  duration_ms: number | null;
+  reset_count: number | null;
 }
 
 export interface PaginatedLogsResponse {

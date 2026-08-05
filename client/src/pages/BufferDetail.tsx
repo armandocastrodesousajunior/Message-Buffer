@@ -305,6 +305,11 @@ export function BufferDetail() {
             {logs.map((log) => {
               let payload: unknown;
               try { payload = JSON.parse(log.webhook_payload); } catch { payload = log.webhook_payload; }
+
+              const durationSec = log.duration_ms != null ? (log.duration_ms / 1000).toFixed(2) : null;
+              const startedAt = log.window_started_at ? new Date(log.window_started_at).toLocaleString('pt-BR') : null;
+              const finishedAt = log.window_finished_at ? new Date(log.window_finished_at).toLocaleString('pt-BR') : null;
+
               return (
                 <div key={log.id} className="log-entry">
                   <div className="log-header">
@@ -312,10 +317,40 @@ export function BufferDetail() {
                     <span className="log-status" data-status={log.webhook_response_status && log.webhook_response_status < 400 ? 'success' : 'error'}>
                       HTTP {log.webhook_response_status ?? 'Falha'}
                     </span>
+                    {durationSec && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                        ⏱ {durationSec}s
+                      </span>
+                    )}
                     <span className="log-time">
                       {new Date(log.created_at).toLocaleString('pt-BR')}
                     </span>
                   </div>
+
+                  {/* Métricas da janela */}
+                  {(startedAt || finishedAt || log.reset_count != null) && (
+                    <div style={{
+                      display: 'flex', flexWrap: 'wrap', gap: '12px',
+                      padding: '8px 12px', margin: '6px 0',
+                      background: 'rgba(255,255,255,0.03)', borderRadius: '6px',
+                      borderLeft: '2px solid var(--border-color)', fontSize: '0.75rem',
+                      color: 'var(--text-muted)', fontFamily: 'monospace'
+                    }}>
+                      {startedAt && (
+                        <span title="Janela aberta em">🟢 Iniciada: <strong style={{ color: 'var(--text-primary)' }}>{startedAt}</strong></span>
+                      )}
+                      {finishedAt && (
+                        <span title="Janela fechada em">🔴 Fechada: <strong style={{ color: 'var(--text-primary)' }}>{finishedAt}</strong></span>
+                      )}
+                      {durationSec && (
+                        <span title="Tempo total de resposta do webhook">⏱ Duração webhook: <strong style={{ color: 'var(--text-primary)' }}>{durationSec}s</strong></span>
+                      )}
+                      {log.reset_count != null && (
+                        <span title="Quantas vezes o timer foi resetado nesta janela">🔄 Resets: <strong style={{ color: log.reset_count > 0 ? 'var(--warning-color, #f59e0b)' : 'var(--text-primary)' }}>{log.reset_count}</strong></span>
+                      )}
+                    </div>
+                  )}
+
                   <details className="log-details">
                     <summary>Ver payload enviado</summary>
                     <pre className="log-payload">{JSON.stringify(payload, null, 2)}</pre>
