@@ -309,6 +309,11 @@ export function BufferDetail() {
               const durationSec = log.duration_ms != null ? (log.duration_ms / 1000).toFixed(2) : null;
               const startedAt = log.window_started_at ? new Date(log.window_started_at).toLocaleString('pt-BR') : null;
               const finishedAt = log.window_finished_at ? new Date(log.window_finished_at).toLocaleString('pt-BR') : null;
+              let msgCount: number | null = null;
+              try {
+                const parsed = JSON.parse(log.webhook_payload);
+                if (Array.isArray(parsed?.messages)) msgCount = parsed.messages.length;
+              } catch { /* ignora */ }
 
               return (
                 <div key={log.id} className="log-entry">
@@ -317,6 +322,11 @@ export function BufferDetail() {
                     <span className="log-status" data-status={log.webhook_response_status && log.webhook_response_status < 400 ? 'success' : 'error'}>
                       HTTP {log.webhook_response_status ?? 'Falha'}
                     </span>
+                    {msgCount !== null && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                        💬 {msgCount} msg{msgCount !== 1 ? 's' : ''}
+                      </span>
+                    )}
                     {durationSec && (
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
                         ⏱ {durationSec}s

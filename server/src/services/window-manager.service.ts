@@ -60,9 +60,12 @@ export class WindowManagerService {
     const expiresAt = Date.now() + newDelay;
     await this.redisService.updateWindowTimer(buffer.id, windowId, expiresAt);
     
-    // Opcional: atualizar expires_at no Postgres para a UI refletir
+    // Atualiza expires_at e incrementa reset_count no Postgres para a UI refletir
     try {
-      await this.windowRepo.updateExpiresAt(windowId, new Date(expiresAt).toISOString());
+      await Promise.all([
+        this.windowRepo.updateExpiresAt(windowId, new Date(expiresAt).toISOString()),
+        this.windowRepo.incrementResetCount(windowId),
+      ]);
     } catch (e) {
        // ignora falha em background para update puramente visual
     }
