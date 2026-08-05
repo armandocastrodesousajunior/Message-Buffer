@@ -36,6 +36,7 @@ export async function runMigrations(): Promise<void> {
     '007_add_window_consumed',
     '008_add_max_resets',
     '009_drop_unused_tables',
+    '010_add_timing_fields',
   ];
 
   const hasTable = await database.schema.hasTable('_migrations');
@@ -78,6 +79,9 @@ export async function runMigrations(): Promise<void> {
         break;
       case '009_drop_unused_tables':
         await dropUnusedTables(database);
+        break;
+      case '010_add_timing_fields':
+        await addTimingFields(database);
         break;
     }
 
@@ -181,5 +185,29 @@ async function dropUnusedTables(database: Knex): Promise<void> {
   const hasWaiting = await database.schema.hasTable('waiting_messages');
   if (hasWaiting) {
     await database.schema.dropTable('waiting_messages');
+  }
+}
+
+async function addTimingFields(database: Knex): Promise<void> {
+  // Campos de tempo na tabela windows
+  const hasStartedAt = await database.schema.hasColumn('windows', 'started_at');
+  if (!hasStartedAt) {
+    await database.schema.alterTable('windows', (table) => {
+      table.dateTime('started_at').nullable();
+      table.dateTime('finished_at').nullable();
+    });
+    // Preenche started_at com created_at para janelas existentes
+    await database('windows').update({ started_at: database.ref('created_at') });
+  }
+
+  // Campos de timing e reset_count na tabela logs
+  const hasWindowStartedAt = await database.schema.hasColumn('logs', 'window_started_at');
+  if (!hasWindowStartedAt) {
+    await database.schema.alterTable('logs', (table) => {
+      table.dateTime('window_started_at').nullable();
+      table.dateTime('window_finished_at').nullable();
+      table.integer('duration_ms').nullable();
+      table.integer('reset_count').nullable();
+    });
   }
 }

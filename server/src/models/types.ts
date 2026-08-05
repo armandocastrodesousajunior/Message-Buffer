@@ -21,6 +21,8 @@ export interface WindowRecord {
   reset_count: number;
   expires_at: string;
   created_at: string;
+  started_at: string;
+  finished_at: string | null;
 }
 
 export interface MessageRecord {
@@ -51,6 +53,10 @@ export interface LogRecord {
   webhook_response_status: number | null;
   webhook_response_body: string | null;
   created_at: string;
+  window_started_at: string | null;
+  window_finished_at: string | null;
+  duration_ms: number | null;
+  reset_count: number | null;
 }
 
 export interface IngestRequest {

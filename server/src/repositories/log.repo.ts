@@ -9,7 +9,11 @@ export class LogRepository {
     identifier: string,
     webhookPayload: unknown,
     responseStatus: number | null,
-    responseBody: string | null
+    responseBody: string | null,
+    windowStartedAt?: string | null,
+    windowFinishedAt?: string | null,
+    durationMs?: number | null,
+    resetCount?: number | null
   ): Promise<LogRecord> {
     const record: LogRecord = {
       id: uuid(),
@@ -20,6 +24,10 @@ export class LogRepository {
       webhook_response_status: responseStatus,
       webhook_response_body: responseBody,
       created_at: new Date().toISOString(),
+      window_started_at: windowStartedAt ?? null,
+      window_finished_at: windowFinishedAt ?? null,
+      duration_ms: durationMs ?? null,
+      reset_count: resetCount ?? null,
     };
     await getDatabase()('logs').insert(record);
     return record;

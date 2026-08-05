@@ -60,6 +60,8 @@ export class WindowRepository {
       reset_count: 0,
       expires_at: new Date(now.getTime() + windowTimeSeconds * 1000).toISOString(),
       created_at: now.toISOString(),
+      started_at: now.toISOString(),
+      finished_at: null,
     };
     await getDatabase()('windows').insert(record);
     return record;
@@ -71,6 +73,14 @@ export class WindowRepository {
 
   async updateExpiresAt(id: string, expiresAt: string): Promise<void> {
     await getDatabase()('windows').where({ id }).update({ expires_at: expiresAt });
+  }
+
+  async updateFinishedAt(id: string, finishedAt: string): Promise<void> {
+    await getDatabase()('windows').where({ id }).update({ finished_at: finishedAt });
+  }
+
+  async incrementResetCount(id: string): Promise<void> {
+    await getDatabase()('windows').where({ id }).increment('reset_count', 1);
   }
 
   // Apenas para limpeza no painel

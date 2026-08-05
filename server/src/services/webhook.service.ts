@@ -11,14 +11,16 @@ export class WebhookService {
     buffer: BufferRecord,
     windowId: string,
     identifier: string,
-    payload: unknown
+    payload: unknown,
+    windowStartedAt?: string | null,
+    resetCount?: number | null
   ): Promise<{ status: number; body: string }> {
     const callKey = `${buffer.id}:${windowId}`;
     if (this.pendingCalls.has(callKey)) {
       return this.pendingCalls.get(callKey)!;
     }
 
-    const promise = this.executeDispatch(buffer, windowId, identifier, payload);
+    const promise = this.executeDispatch(buffer, windowId, identifier, payload, windowStartedAt, resetCount);
     this.pendingCalls.set(callKey, promise);
 
     try {
@@ -32,10 +34,16 @@ export class WebhookService {
     buffer: BufferRecord,
     windowId: string,
     identifier: string,
-    payload: unknown
+    payload: unknown,
+    windowStartedAt?: string | null,
+    resetCount?: number | null
   ): Promise<{ status: number; body: string }> {
     let status: number | null = null;
     let body: string | null = null;
+    const dispatchStart = Date.now();
+    const finishedAt = new Date().toISOString();
+
+    console.log(`[webhook] [${identifier}] window=${windowId} → dispatching to ${buffer.webhook_url} (started_at=${windowStartedAt}, resets=${resetCount ?? 0})`);
 
     try {
       const response = await axios.post(buffer.webhook_url, payload, {
@@ -50,7 +58,24 @@ export class WebhookService {
       body = err instanceof Error ? err.message : 'Unknown error';
     }
 
-    await this.logRepo.create(buffer.id, windowId, identifier, payload, status, body);
+    const durationMs = Date.now() - dispatchStart;
+    const windowFinishedAt = new Date().toISOString();
+
+    console.log(`[webhook] [${identifier}] window=${windowId} → status=${status} duration=${durationMs}ms resets=${resetCount ?? 0} started=${windowStartedAt} finished=${windowFinishedAt}`);
+
+    await this.logRepo.create(
+      buffer.id,
+      windowId,
+      identifier,
+      payload,
+      status,
+      body,
+      windowStartedAt ?? null,
+      windowFinishedAt,
+      durationMs,
+      resetCount ?? null
+    );
     return { status, body: body ?? '' };
   }
 }
+

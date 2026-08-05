@@ -15,4 +15,5 @@ export const env = {
     return match ? match[1] : './data/message-buffer.db';
   },
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
+  bufferCacheTtl: parseInt(process.env.BUFFER_CACHE_TTL_SECONDS || '60', 10),
 };

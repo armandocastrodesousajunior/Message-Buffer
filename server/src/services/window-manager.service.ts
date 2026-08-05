@@ -26,20 +26,19 @@ export class WindowManagerService {
       const allBuffers = await this.bufferRepo.findAll();
       const now = Date.now();
       
-      for (const buffer of allBuffers) {
-        // 1. Janelas Abertas que Expiraram
+      await Promise.all(allBuffers.map(async (buffer) => {
+        // 1. Janelas Abertas que Expiraram — processa TODAS em paralelo
         const expiredWindows = await this.redisService.getExpiredWindows(buffer.id, now);
-        for (const windowId of expiredWindows) {
-          // Lock atômico (evita que 2 workers processem a mesma janela)
+        await Promise.all(expiredWindows.map(async (windowId) => {
           const claimed = await this.redisService.claimTimerLock(buffer.id, windowId);
           if (claimed) {
             await this.expireWindow(buffer, windowId);
           }
-        }
+        }));
 
-        // 2. Janelas Fechadas que excederam o Tempo de Consumo
+        // 2. Janelas Fechadas que excederam o Tempo de Consumo — processa TODAS em paralelo
         const expiredConsumptions = await this.redisService.getExpiredConsumptionWindows(buffer.id, now);
-        for (const windowId of expiredConsumptions) {
+        await Promise.all(expiredConsumptions.map(async (windowId) => {
           const claimed = await this.redisService.claimConsumptionLock(buffer.id, windowId);
           if (claimed) {
             await this.windowRepo.updateStatus(windowId, 'expired');
@@ -49,8 +48,8 @@ export class WindowManagerService {
               await this.processQueue(buffer);
             }
           }
-        }
-      }
+        }));
+      }));
     } catch (err) {
       console.error('[sweepExpiredWindows] Erro na varredura:', err);
     }
@@ -88,6 +87,10 @@ export class WindowManagerService {
     if (!win) return; // Janela não encontrada no DB
     const identifier = win.identifier;
 
+    // Marca quando a janela terminou de receber mensagens
+    const finishedAt = new Date().toISOString();
+    await this.windowRepo.updateFinishedAt(windowId, finishedAt);
+
     // Atualiza DB e prepara para webhook
     await this.windowRepo.updateStatus(windowId, 'processing');
 
@@ -103,7 +106,14 @@ export class WindowManagerService {
       })),
     };
 
-    const result = await this.webhookService.dispatch(buffer, windowId, identifier, payload);
+    const result = await this.webhookService.dispatch(
+      buffer,
+      windowId,
+      identifier,
+      payload,
+      win.started_at,
+      win.reset_count
+    );
 
     if (buffer.require_consumption && result.status === 200) {
       // Configurado sem timeout de consumo e sucesso imediato: Marca como consumido
