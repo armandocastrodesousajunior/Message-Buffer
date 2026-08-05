@@ -306,9 +306,13 @@ export function BufferDetail() {
               let payload: unknown;
               try { payload = JSON.parse(log.webhook_payload); } catch { payload = log.webhook_payload; }
 
-              const durationSec = log.duration_ms != null ? (log.duration_ms / 1000).toFixed(2) : null;
+              const webhookSec = log.duration_ms != null ? (log.duration_ms / 1000).toFixed(2) : null;
+              const windowSec = log.window_duration_ms != null ? (log.window_duration_ms / 1000).toFixed(2) : null;
+              const totalSec = (log.duration_ms != null && log.window_duration_ms != null)
+                ? ((log.duration_ms + log.window_duration_ms) / 1000).toFixed(2)
+                : (webhookSec ?? windowSec);
               const startedAt = log.window_started_at ? new Date(log.window_started_at).toLocaleString('pt-BR') : null;
-              const finishedAt = log.window_finished_at ? new Date(log.window_finished_at).toLocaleString('pt-BR') : null;
+              const closedAt = log.window_finished_at ? new Date(log.window_finished_at).toLocaleString('pt-BR') : null;
               let msgCount: number | null = null;
               try {
                 const parsed = JSON.parse(log.webhook_payload);
@@ -327,9 +331,9 @@ export function BufferDetail() {
                         💬 {msgCount} msg{msgCount !== 1 ? 's' : ''}
                       </span>
                     )}
-                    {durationSec && (
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                        ⏱ {durationSec}s
+                    {totalSec && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }} title="Tempo total = janela + webhook">
+                        ⏱ {totalSec}s total
                       </span>
                     )}
                     <span className="log-time">
@@ -338,9 +342,9 @@ export function BufferDetail() {
                   </div>
 
                   {/* Métricas da janela */}
-                  {(startedAt || finishedAt || log.reset_count != null) && (
+                  {(startedAt || closedAt || log.reset_count != null || windowSec || webhookSec) && (
                     <div style={{
-                      display: 'flex', flexWrap: 'wrap', gap: '12px',
+                      display: 'flex', flexWrap: 'wrap', gap: '14px',
                       padding: '8px 12px', margin: '6px 0',
                       background: 'rgba(255,255,255,0.03)', borderRadius: '6px',
                       borderLeft: '2px solid var(--border-color)', fontSize: '0.75rem',
@@ -349,11 +353,14 @@ export function BufferDetail() {
                       {startedAt && (
                         <span title="Janela aberta em">🟢 Iniciada: <strong style={{ color: 'var(--text-primary)' }}>{startedAt}</strong></span>
                       )}
-                      {finishedAt && (
-                        <span title="Janela fechada em">🔴 Fechada: <strong style={{ color: 'var(--text-primary)' }}>{finishedAt}</strong></span>
+                      {closedAt && (
+                        <span title="Janela fechada (webhook disparado em)">🔴 Fechada: <strong style={{ color: 'var(--text-primary)' }}>{closedAt}</strong></span>
                       )}
-                      {durationSec && (
-                        <span title="Tempo total de resposta do webhook">⏱ Duração webhook: <strong style={{ color: 'var(--text-primary)' }}>{durationSec}s</strong></span>
+                      {windowSec && (
+                        <span title="Quanto tempo a janela ficou aberta acumulando mensagens">📋 Janela: <strong style={{ color: 'var(--text-primary)' }}>{windowSec}s</strong></span>
+                      )}
+                      {webhookSec && (
+                        <span title="Quanto tempo o servidor webhook demorou para responder">🌐 Webhook: <strong style={{ color: 'var(--text-primary)' }}>{webhookSec}s</strong></span>
                       )}
                       {log.reset_count != null && (
                         <span title="Quantas vezes o timer foi resetado nesta janela">🔄 Resets: <strong style={{ color: log.reset_count > 0 ? 'var(--warning-color, #f59e0b)' : 'var(--text-primary)' }}>{log.reset_count}</strong></span>

@@ -13,7 +13,8 @@ export class LogRepository {
     windowStartedAt?: string | null,
     windowFinishedAt?: string | null,
     durationMs?: number | null,
-    resetCount?: number | null
+    resetCount?: number | null,
+    windowDurationMs?: number | null
   ): Promise<LogRecord> {
     const record: LogRecord = {
       id: uuid(),
@@ -28,6 +29,7 @@ export class LogRepository {
       window_finished_at: windowFinishedAt ?? null,
       duration_ms: durationMs ?? null,
       reset_count: resetCount ?? null,
+      window_duration_ms: windowDurationMs ?? null,
     };
     await getDatabase()('logs').insert(record);
     return record;

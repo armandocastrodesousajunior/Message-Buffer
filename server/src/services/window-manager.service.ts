@@ -115,6 +115,7 @@ export class WindowManagerService {
       identifier,
       payload,
       win.started_at,
+      finishedAt,       // quando a janela FECHOU (antes do webhook ser disparado)
       win.reset_count
     );
 

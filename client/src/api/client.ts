@@ -100,8 +100,9 @@ export interface LogData {
   created_at: string;
   window_started_at: string | null;
   window_finished_at: string | null;
-  duration_ms: number | null;
+  duration_ms: number | null;        // duração do webhook
   reset_count: number | null;
+  window_duration_ms: number | null; // duração da janela
 }
 
 export interface PaginatedLogsResponse {

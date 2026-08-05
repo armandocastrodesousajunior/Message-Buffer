@@ -37,6 +37,7 @@ export async function runMigrations(): Promise<void> {
     '008_add_max_resets',
     '009_drop_unused_tables',
     '010_add_timing_fields',
+    '011_add_window_duration_ms',
   ];
 
   const hasTable = await database.schema.hasTable('_migrations');
@@ -82,6 +83,9 @@ export async function runMigrations(): Promise<void> {
         break;
       case '010_add_timing_fields':
         await addTimingFields(database);
+        break;
+      case '011_add_window_duration_ms':
+        await addWindowDurationMs(database);
         break;
     }
 
@@ -208,6 +212,15 @@ async function addTimingFields(database: Knex): Promise<void> {
       table.dateTime('window_finished_at').nullable();
       table.integer('duration_ms').nullable();
       table.integer('reset_count').nullable();
+    });
+  }
+}
+
+async function addWindowDurationMs(database: Knex): Promise<void> {
+  const hasColumn = await database.schema.hasColumn('logs', 'window_duration_ms');
+  if (!hasColumn) {
+    await database.schema.alterTable('logs', (table) => {
+      table.integer('window_duration_ms').nullable();
     });
   }
 }
